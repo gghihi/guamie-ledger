@@ -6,6 +6,12 @@ name = "guamie-ledger-api"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
+# Gemini 轉送站（放在美國）：台灣使用者常被分到香港機房，但 Google 不開放香港使用 Gemini API。
+# 主要後端留在亞洲（靠近資料庫），只有呼叫 Gemini 時交給轉送站（見 ../worker-gemini）。
+[[services]]
+binding = "GEMINI_PROXY"
+service = "guamie-ledger-gemini"
+
 # 公開設定（不是密碼，可以放這裡）
 [vars]
 # 允許呼叫後端的網站（GitHub Pages 網域）；第 2 階段上線後改成實際網址。

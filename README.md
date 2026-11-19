@@ -10,7 +10,8 @@
 | 資料夾 | 用途 |
 |---|---|
 | `docs/` | 前端網頁，由 GitHub Pages 發布 |
-| `worker/` | 後端，部署到 Cloudflare Workers |
+| `worker/` | 後端，部署到 Cloudflare Workers（放在亞洲，靠近資料庫） |
+| `worker-gemini/` | Gemini 轉送站，放在美國（Google 不開放香港機房使用 Gemini API） |
 | `app 封面/` | 原始圖示檔（記帳APP 圖示.png） |
 | `tools/` | 本機測試用的小工具 |
 

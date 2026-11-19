@@ -6,6 +6,7 @@ import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.j
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
+import { geminiTransport } from './parse/gemini.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
   requestRepay, confirmRepay, cancelRepay, declineRepay,
@@ -22,9 +23,24 @@ async function health(request, env) {
   } catch (err) {
     console.error('資料庫檢查失敗', err);
   }
+  // 加上 ?gemini=1 時，順便確認 Gemini 連得上（只查模型清單，不花生成額度，也不回傳金鑰）
+  let gemini;
+  if (new URL(request.url).searchParams.get('gemini') === '1') {
+    try {
+      const t = geminiTransport(env);
+      const res = await t.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', {
+        headers: t.key ? { 'x-goog-api-key': t.key } : {},
+      });
+      const body = res.ok ? null : await res.json().catch(() => null);
+      gemini = res.ok ? 'ok' : `${res.status} ${body?.error?.message || ''}`.slice(0, 120);
+    } catch {
+      gemini = 'network_error';
+    }
+  }
   return json(request, env, {
     ok: true,
     database,
+    ...(gemini ? { gemini, colo: request.cf?.colo } : {}),
     app: '呱咩小窩帳',
     message: database ? '呱呱～咩咩～後端與資料庫都正常！' : '後端正常，但資料庫還沒準備好',
     time: new Date().toISOString(),

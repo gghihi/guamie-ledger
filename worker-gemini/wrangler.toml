@@ -1,0 +1,14 @@
+# 呱咩小窩帳｜Gemini 轉送站
+# 為什麼需要它：台灣使用者常被 Cloudflare 分到香港機房，但 Google 不開放香港使用 Gemini API。
+# 主要後端留在亞洲（靠近資料庫、速度快），只有呼叫 Gemini 時交給這個放在美國的小程式轉送。
+# 這個程式沒有公開網址，只能由主要後端呼叫（Cloudflare 內部連線）。
+# Gemini 金鑰存在這個程式的 Cloudflare 保險箱：npx wrangler secret put GEMINI_API_KEY --config ../worker-gemini/wrangler.toml
+
+name = "guamie-ledger-gemini"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+
+[placement]
+region = "gcp:us-central1"

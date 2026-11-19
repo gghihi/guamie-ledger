@@ -146,6 +146,16 @@ test('金鑰前面有看不見的字元（BOM）或換行 → 自動去掉再送
   assert.equal(fake.calls[0].init.headers['x-goog-api-key'], 'fake-key');
 });
 
+test('有轉送站時：交給轉送站，而且不在請求裡帶金鑰', async () => {
+  const fake = fakeGemini({ isLoan: true, amount: 88, direction: 'me_lent', item: '午餐', date: today });
+  const direct = fakeGemini({});
+  const r = await analyze('午餐 88', null, ctx, { GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_API_KEY: 'should-not-be-sent', GEMINI_PROXY: { fetch: fake } }, direct);
+  assert.equal(direct.calls.length, 0);
+  assert.equal(fake.calls.length, 1);
+  assert.equal(fake.calls[0].init.headers['x-goog-api-key'], undefined);
+  assert.equal(r.fields.amount, 88);
+});
+
 test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清掉', () => {
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });

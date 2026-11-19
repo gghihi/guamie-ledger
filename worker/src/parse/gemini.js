@@ -60,9 +60,22 @@ export function cleanApiKey(raw) {
   return String(raw ?? '').replace(/^﻿/, '').replace(/[^\x21-\x7E]/g, '');
 }
 
+/**
+ * 決定怎麼連到 Gemini：
+ *  有轉送站（GEMINI_PROXY）→ 交給美國的轉送站，金鑰由轉送站加上
+ *  沒有轉送站（本機測試）→ 直接連 Google，使用這裡的金鑰
+ */
+export function geminiTransport(env, fetchImpl = fetch) {
+  if (env.GEMINI_PROXY) {
+    return { fetch: (url, init) => env.GEMINI_PROXY.fetch(url, init), key: null };
+  }
+  return { fetch: fetchImpl, key: cleanApiKey(env.GEMINI_API_KEY) || null };
+}
+
 export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch) {
-  const env = { ...rawEnv, GEMINI_API_KEY: cleanApiKey(rawEnv.GEMINI_API_KEY) };
-  if (!env.GEMINI_API_KEY) throw new GeminiError('no_key');
+  const transport = geminiTransport(rawEnv, fetchImpl);
+  if (!rawEnv.GEMINI_PROXY && !transport.key) throw new GeminiError('no_key');
+  const env = { ...rawEnv, transport };
   if (!env.GEMINI_MODEL) throw new GeminiError('no_model');
 
   // 先用主要模型；忙碌、逾時或出錯時，改用備用模型（兩個都失敗才交給規則解析）
@@ -96,9 +109,11 @@ async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking 
   const timer = setTimeout(() => controller.abort(), timeout);
   let res;
   try {
-    res = await fetchImpl(`${API_BASE}/${encodeURIComponent(model)}:generateContent`, {
+    const { transport } = env;
+    res = await transport.fetch(`${API_BASE}/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      // 經過轉送站時不帶金鑰（轉送站自己加）；本機直連時才帶
+      headers: { 'Content-Type': 'application/json', ...(transport.key ? { 'x-goog-api-key': transport.key } : {}) },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt(ctx) }] },
         contents: [{ role: 'user', parts }],
