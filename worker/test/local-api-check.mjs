@@ -205,6 +205,39 @@ const lastU = evU.data.events.slice(-4);
 check('狀態紀錄有「取消標記」與「還沒收到（原因）」', lastU.map((e) => e.action).join(',') === 'request_repay,cancel_repay,request_repay,decline_repay'
   && lastU[3].note === '還沒收到錢', evU.data);
 
+// ───── 第 9 階段：統整 ─────
+const loansA = (await call('A', 'GET', '/api/loans')).data.loans;
+const open = loansA.filter((l) => ['unpaid', 'repay_pending'].includes(l.status));
+const expIOwe = open.filter((l) => l.borrower.isMe).reduce((s, l) => s + l.amount, 0);
+const expPartner = open.filter((l) => l.lender.isMe).reduce((s, l) => s + l.amount, 0);
+const sumA = await call('A', 'GET', '/api/summary');
+check('統整（全部）＝手算「未還＋已還待確認」的金額', sumA.status === 200 && sumA.data.me.owes === expIOwe && sumA.data.partner.owes === expPartner
+  && sumA.data.count === open.length, { expIOwe, expPartner, got: sumA.data });
+
+const sumB = await call('B', 'GET', '/api/summary');
+check('兩個人看到的統整一致（我與對方互換）', sumB.data.me.owes === sumA.data.partner.owes && sumB.data.partner.owes === sumA.data.me.owes
+  && sumB.data.net?.amount === sumA.data.net?.amount && sumB.data.net?.toMe === !sumA.data.net?.toMe, sumB.data);
+
+await newLoan('A', { amount: 5000, item: '還沒同意的' });
+const sumA2 = await call('A', 'GET', '/api/summary');
+check('待確認的帳不算進統整', sumA2.data.me.owes === sumA.data.me.owes && sumA2.data.partner.owes === sumA.data.partner.owes, sumA2.data);
+
+const lastMonthDate = (() => {
+  const [y, m] = today.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12-15` : `${y}-${String(m - 1).padStart(2, '0')}-15`;
+})();
+const lm = await newLoan('A', { amount: 1000, item: '上個月的', date: lastMonthDate });
+await call('B', 'POST', `/api/loans/${lm}/approve`);
+const sumM = await call('A', 'GET', `/api/summary?month=${lastMonthDate.slice(0, 7)}`);
+check('指定月份：只算那個月 → 咩咩寶要給我 1000', sumM.data.count === 1 && sumM.data.partner.owes === 1000 && sumM.data.me.owes === 0
+  && sumM.data.net.toMe === true && sumM.data.net.amount === 1000, sumM.data);
+check('月份選單包含上個月與這個月', sumM.data.months.includes(lastMonthDate.slice(0, 7)) && sumM.data.months.includes(today.slice(0, 7)), sumM.data.months);
+
+const sumBad = await call('A', 'GET', '/api/summary?month=2026-13');
+check('錯誤的月份格式 → 拒絕', sumBad.status === 400, sumBad.data);
+const sumC = await call('C', 'GET', '/api/summary');
+check('只有一個人的小窩沒有統整', sumC.status === 409, sumC.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

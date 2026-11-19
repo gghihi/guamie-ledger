@@ -322,3 +322,24 @@ input:focus { border-color: var(--frog); }
 .timeline li { position: relative; padding: 4px 0 10px 10px; display: flex; flex-direction: column; }
 .timeline li::before { content: '🐾'; position: absolute; left: -22px; top: 2px; font-size: 0.8rem; }
 .timeline .when { font-size: 0.8rem; color: var(--muted); }
+
+/* ───── 第 9 階段：統整卡片 ───── */
+.summary-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.summary-head h2 { margin: 0; }
+.summary-head select {
+  font: inherit; font-size: 0.95rem; color: var(--text);
+  padding: 6px 10px; border-radius: 12px; border: 3px solid var(--sheep-shade); background: #fff;
+}
+.net {
+  margin: 14px 0 10px; padding: 14px; border-radius: 18px; text-align: center;
+  font-size: 1.1rem; font-weight: 700; line-height: 1.6;
+}
+.net strong { display: block; font-size: 2rem; font-weight: 900; letter-spacing: 1px; }
+.net .who { padding: 0 2px; }
+.net.to-me { background: #eaf6dc; color: var(--frog-dark); border: 3px dashed var(--frog); }
+.net.from-me { background: #fff1e3; color: #b8681f; border: 3px dashed #f0b878; }
+.net.even { background: var(--sheep-shade); color: var(--wood-dark); }
+.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sum-grid > div { background: #fff; border: 2px solid var(--sheep-shade); border-radius: 14px; padding: 10px; text-align: center; }
+.sum-grid small { display: block; color: var(--muted); }
+.sum-grid b { font-size: 1.2rem; }

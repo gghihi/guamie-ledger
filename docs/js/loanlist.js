@@ -319,8 +319,12 @@ export function mountLoanList(container, ctx) {
       return;
     }
     render();
+    // 第一次載入以外（例如同意、還款後），通知統整卡片更新
+    if (loaded) ctx.onChange?.();
+    loaded = true;
   }
 
+  let loaded = false;
   refresh();
   return { refresh };
 }

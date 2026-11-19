@@ -5,6 +5,7 @@ import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
 import { parseText, createLoan, listLoans } from './loans.js';
+import { getSummary } from './summary.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
   requestRepay, confirmRepay, cancelRepay, declineRepay,
@@ -53,6 +54,9 @@ const routes = {
   'GET /api/loans': listLoans,
   'POST /api/loans': createLoan,
   'POST /api/loans/approve-all': approveAll,
+
+  // 統整
+  'GET /api/summary': getSummary,
 };
 
 // 帶有編號的路由，例如 /api/loans/1234/approve

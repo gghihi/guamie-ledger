@@ -6,6 +6,7 @@ import { api, getToken, startGoogleLogin, finishGoogleLogin, logout } from './ap
 import { esc, toast, confirmDialog, withBusy } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
+import { mountSummary } from './summary.js';
 
 const app = document.getElementById('app');
 let state = { me: null };
@@ -122,6 +123,7 @@ function renderHome() {
       <ul class="members">${members}</ul>
     </details>
     ${inviteBlock}
+    <div id="summary"></div>
     <div id="recorder"></div>
     <div id="loan-list"></div>`;
   bindUserBar();
@@ -129,7 +131,8 @@ function renderHome() {
   if (together) {
     const me = ledger.members.find((m) => m.isMe);
     const partner = ledger.members.find((m) => !m.isMe);
-    const list = mountLoanList(document.getElementById('loan-list'), { partner });
+    const summary = mountSummary(document.getElementById('summary'));
+    const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
   }
 
