@@ -10,6 +10,8 @@ worker/.dev.vars.*
 .env.*
 *.pem
 *.key
+# 暫時貼金鑰用的記事本檔
+*貼金鑰*.txt
 
 # ===== 自動產生、不需上傳的檔案 =====
 node_modules/
