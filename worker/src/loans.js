@@ -32,9 +32,9 @@ export async function parseText(request, env) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
   const body = await readJson(request);
-  const text = cleanText(body.text, 200);
+  const text = cleanText(body.text, 300);
   if (!text) throw new HttpError(400, '請先輸入一句話', 'empty_text');
-  const result = analyze(text, body.draft, parseCtx(env, lc));
+  const result = await analyze(text, body.draft, parseCtx(env, lc), env);
   return json(request, env, { ok: true, ...result });
 }
 

@@ -151,8 +151,15 @@ export function mountRecorder(container, ctx) {
       const result = await api('/api/parse', { method: 'POST', body: { text, draft } });
       draft = result.fields;
       source = result.source;
-      if (result.notice) say('bot', result.notice);
       say('bot', result.question || '幫你整理好了，確認沒問題就按「確認送出」！');
+      // Gemini 無法使用時的小提示（記帳流程照常）
+      if (result.notice) {
+        const chip = document.createElement('div');
+        chip.className = 'notice-chip';
+        chip.textContent = `🔧 ${result.notice}`;
+        log.appendChild(chip);
+        log.scrollTop = log.scrollHeight;
+      }
       renderCard();
     });
     input.focus();

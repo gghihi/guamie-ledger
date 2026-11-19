@@ -292,3 +292,14 @@ input:focus { border-color: var(--frog); }
 .tag.todo { background: var(--warn); }
 .tag.no { background: var(--danger); }
 .empty { padding: 16px 0; }
+
+/* ───── 備用解析小提示 ───── */
+.notice-chip {
+  align-self: flex-start;
+  margin-left: 34px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  color: var(--wood-dark);
+  background: var(--sheep-shade);
+  border-radius: 999px;
+}
