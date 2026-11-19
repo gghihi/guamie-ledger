@@ -343,3 +343,25 @@ input:focus { border-color: var(--frog); }
 .sum-grid > div { background: #fff; border: 2px solid var(--sheep-shade); border-radius: 14px; padding: 10px; text-align: center; }
 .sum-grid small { display: block; color: var(--muted); }
 .sum-grid b { font-size: 1.2rem; }
+
+/* ───── 第 10 階段：麥克風 ───── */
+.mic {
+  flex: 0 0 auto;
+  min-width: 48px; height: 48px;
+  border-radius: 50%;
+  border: 3px solid var(--wood);
+  background: #fff;
+  font-size: 1.3rem;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--wood);
+}
+.mic:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--wood); }
+.mic.rec {
+  min-width: 64px; border-radius: 999px;
+  font-size: 0.9rem; font-weight: 800; color: #fff;
+  background: var(--danger); border-color: #9e3f2b; box-shadow: 0 3px 0 #9e3f2b;
+  animation: pulse 1s infinite;
+}
+.mic:disabled { opacity: 0.6; }
+@keyframes pulse { 50% { filter: brightness(1.15); } }
+.steps { padding-left: 22px; line-height: 1.8; }

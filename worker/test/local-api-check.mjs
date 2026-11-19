@@ -238,6 +238,16 @@ check('錯誤的月份格式 → 拒絕', sumBad.status === 400, sumBad.data);
 const sumC = await call('C', 'GET', '/api/summary');
 check('只有一個人的小窩沒有統整', sumC.status === 409, sumC.data);
 
+// ───── 第 10 階段：語音 ─────
+const v1 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/webm', base64: 'AAAA' } });
+check('語音：不接受 WAV 以外的格式', v1.status === 400, v1.data);
+const v2 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/wav', base64: 'A'.repeat(1_500_000) } });
+check('語音：超過 30 秒的錄音 → 拒絕', v2.status === 413, v2.data);
+const v3 = await call(null, 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/wav', base64: 'UklGRg==' } });
+check('語音：沒登入 → 拒絕', v3.status === 401, v3.data);
+const v4 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/wav', base64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=' } });
+check('語音：格式正確 → 有回應（本機沒有 Gemini 金鑰，所以請使用者改用打字）', v4.status === 200 && /打字|鍵盤/.test(v4.data.question), v4.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

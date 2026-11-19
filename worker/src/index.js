@@ -4,7 +4,7 @@ import { handlePreflight } from './cors.js';
 import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
-import { parseText, createLoan, listLoans } from './loans.js';
+import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
@@ -51,6 +51,7 @@ const routes = {
 
   // 記帳
   'POST /api/parse': parseText,
+  'POST /api/parse-voice': parseVoice,
   'GET /api/loans': listLoans,
   'POST /api/loans': createLoan,
   'POST /api/loans/approve-all': approveAll,

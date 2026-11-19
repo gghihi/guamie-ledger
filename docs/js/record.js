@@ -1,7 +1,9 @@
-// 對話式記帳：打一句話 → 解析 → 顯示可修改的卡片 → 缺漏追問 → 確認送出
+// 對話式記帳：打字或說話 → 解析 → 顯示可修改的卡片 → 缺漏追問 → 確認送出
+// 第 10 階段：🎤 語音（錄音交給 Gemini 理解）；不能錄音時提示改用鍵盤麥克風
 
 import { api } from './api.js';
-import { esc, toast, withBusy, money, todayTaipei } from './ui.js';
+import { esc, toast, withBusy, money, todayTaipei, openModal } from './ui.js';
+import { canRecord, startRecording } from './voice.js';
 
 /**
  * 在 container 裡放入記帳區。
@@ -11,6 +13,8 @@ export function mountRecorder(container, ctx) {
   const partner = ctx.partner.nickname;
   let draft = null;        // 目前的草稿 { amount, direction, item, date }
   let source = 'rules';    // 解析來源
+  let channel = 'web';     // 這筆是用打字（web）還是語音（voice）
+  let recording = null;    // 錄音中的控制器
 
   container.innerHTML = `
     <section class="card chat">
@@ -18,6 +22,7 @@ export function mountRecorder(container, ctx) {
       <div class="chat-log" id="chat-log" aria-live="polite"></div>
       <div id="draft-card"></div>
       <form class="chat-input" id="chat-form" autocomplete="off">
+        <button class="mic" type="button" id="mic" aria-label="按一下開始說話">🎤</button>
         <input id="chat-text" maxlength="200" placeholder="例如：昨天幫${esc(partner)}付晚餐 350" />
         <button class="btn send" type="submit" aria-label="送出">送出</button>
       </form>
@@ -27,6 +32,7 @@ export function mountRecorder(container, ctx) {
   const cardBox = container.querySelector('#draft-card');
   const form = container.querySelector('#chat-form');
   const input = container.querySelector('#chat-text');
+  const micBtn = container.querySelector('#mic');
 
   function say(who, text) {
     const div = document.createElement('div');
@@ -34,6 +40,7 @@ export function mountRecorder(container, ctx) {
     div.innerHTML = who === 'bot' ? `<span class="who">🐸</span><p>${esc(text)}</p>` : `<p>${esc(text)}</p>`;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
+    return div;
   }
 
   say('bot', `嗨！跟我說一句話就能記帳，例如「昨天幫${partner}付晚餐 350」或「${partner}幫我付咖啡 120」。`);
@@ -121,6 +128,7 @@ export function mountRecorder(container, ctx) {
     });
     cardBox.querySelector('#d-cancel').onclick = () => {
       draft = null;
+      channel = 'web';
       renderCard();
       say('bot', '好的，這筆先不記 🐸');
     };
@@ -129,12 +137,13 @@ export function mountRecorder(container, ctx) {
         if (draft.date > today) throw new Error('日期不能是未來的日子喔');
         const { loan } = await api('/api/loans', {
           method: 'POST',
-          body: { ...draft, parseSource: source, inputChannel: 'web' },
+          body: { ...draft, parseSource: source, inputChannel: channel },
         });
         const who = loan.borrower.isMe ? `我欠${partner}` : `${partner}欠我`;
         say('bot', `記好了！${loan.item} ${money(loan.amount)}（${who}），等${partner}確認喔 🐑`);
         toast('已送出，等對方確認', 'ok');
         draft = null;
+        channel = 'web';
         renderCard();
         ctx.onSaved?.();
       });
@@ -149,19 +158,97 @@ export function mountRecorder(container, ctx) {
     const button = form.querySelector('button');
     await withBusy(button, async () => {
       const result = await api('/api/parse', { method: 'POST', body: { text, draft } });
-      draft = result.fields;
-      source = result.source;
-      say('bot', result.question || '幫你整理好了，確認沒問題就按「確認送出」！');
-      // Gemini 無法使用時的小提示（記帳流程照常）
-      if (result.notice) {
-        const chip = document.createElement('div');
-        chip.className = 'notice-chip';
-        chip.textContent = `🔧 ${result.notice}`;
-        log.appendChild(chip);
-        log.scrollTop = log.scrollHeight;
-      }
-      renderCard();
+      handleResult(result);
     });
     input.focus();
+  };
+
+  /** 顯示解析結果（打字和語音共用） */
+  function handleResult(result) {
+    draft = result.fields;
+    source = result.source;
+    say('bot', result.question || '幫你整理好了，確認沒問題就按「確認送出」！');
+    // Gemini 無法使用時的小提示（記帳流程照常）
+    if (result.notice) {
+      const chip = document.createElement('div');
+      chip.className = 'notice-chip';
+      chip.textContent = `🔧 ${result.notice}`;
+      log.appendChild(chip);
+      log.scrollTop = log.scrollHeight;
+    }
+    renderCard();
+  }
+
+  // ───── 🎤 語音 ─────
+
+  /** 不能錄音時（例如 iPhone 舊版 Safari、或沒有允許麥克風）：教使用者用鍵盤上的麥克風 */
+  function showKeyboardMicHelp(reason) {
+    const { el, close } = openModal(`
+      <h2>🎤 改用鍵盤上的麥克風</h2>
+      <p>${esc(reason)}</p>
+      <ol class="steps">
+        <li>點一下下面的輸入框，叫出鍵盤。</li>
+        <li>按鍵盤上的 <b>🎙️ 麥克風</b>（iPhone 在鍵盤右下角或空白鍵旁）。</li>
+        <li>說出要記的帳，例如「昨天幫${esc(partner)}付晚餐三百五」。</li>
+        <li>說完按「送出」，小青蛙一樣會幫你整理。</li>
+      </ol>
+      <button class="btn" data-close id="to-input">好，去輸入框</button>`);
+    el.querySelector('#to-input').addEventListener('click', () => {
+      close();
+      input.focus();
+    });
+  }
+
+  function setMicState(state, seconds = 0) {
+    micBtn.classList.toggle('rec', state === 'rec');
+    micBtn.disabled = state === 'busy';
+    micBtn.textContent = state === 'rec' ? `■ ${seconds}s` : state === 'busy' ? '…' : '🎤';
+    micBtn.setAttribute('aria-label', state === 'rec' ? '按一下停止錄音' : '按一下開始說話');
+    input.disabled = state !== 'idle';
+  }
+
+  async function stopAndSend() {
+    const rec = recording;
+    recording = null;
+    setMicState('busy');
+    try {
+      const audio = await rec.stop();
+      const bubble = say('me', `🎤 語音（${audio.seconds} 秒）`);
+      const result = await api('/api/parse-voice', {
+        method: 'POST',
+        body: { audio: { mimeType: 'audio/wav', base64: audio.base64 }, draft },
+      });
+      if (result.transcript) bubble.querySelector('p').textContent = `🎤 「${result.transcript}」`;
+      channel = 'voice';
+      handleResult(result);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setMicState('idle');
+    }
+  }
+
+  micBtn.onclick = async () => {
+    if (recording) return stopAndSend();
+    if (!canRecord()) {
+      return showKeyboardMicHelp('這個瀏覽器不支援直接錄音（常見於 iPhone 較舊的 Safari）。');
+    }
+    try {
+      recording = await startRecording({
+        onTick: (s) => recording && setMicState('rec', s),
+        onAutoStop: () => {
+          if (!recording) return;
+          toast('已經 30 秒了，自動停止', 'info');
+          stopAndSend();
+        },
+      });
+      setMicState('rec', 0);
+      say('bot', '我在聽～說完再按一下 ■ 停止 🐸');
+    } catch (err) {
+      recording = null;
+      setMicState('idle');
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      showKeyboardMicHelp(denied ? '沒有取得麥克風權限（可以到瀏覽器設定裡允許）。' : '這支手機現在無法錄音。');
+    }
   };
 }

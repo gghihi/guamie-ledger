@@ -39,6 +39,26 @@ export async function parseText(request, env) {
   return json(request, env, { ok: true, ...result });
 }
 
+// 語音限制：16kHz 單聲道 WAV，30 秒約 960KB，轉成文字編碼後約 1.3MB
+const MAX_AUDIO_BASE64 = 1_400_000;
+const AUDIO_TYPES = ['audio/wav'];
+
+/** POST /api/parse-voice：把一段錄音交給 Gemini 理解（語音一律由 Gemini 處理） */
+export async function parseVoice(request, env) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const body = await readJson(request);
+  const audio = body.audio || {};
+  if (!AUDIO_TYPES.includes(audio.mimeType) || typeof audio.base64 !== 'string' || !audio.base64) {
+    throw new HttpError(400, '錄音格式不正確，請再錄一次', 'bad_audio');
+  }
+  if (audio.base64.length > MAX_AUDIO_BASE64) throw new HttpError(413, '錄音太長了，請在 30 秒內說完', 'audio_too_long');
+  if (!/^[A-Za-z0-9+/]+=*$/.test(audio.base64.slice(-100))) throw new HttpError(400, '錄音內容不正確', 'bad_audio');
+
+  const result = await analyze({ audio: { mimeType: audio.mimeType, base64: audio.base64 } }, body.draft, parseCtx(env, lc), env);
+  return json(request, env, { ok: true, ...result });
+}
+
 /** POST /api/loans：確認後送出一筆借款（進入「待確認」） */
 export async function createLoan(request, env) {
   const user = await requireUser(request, env);

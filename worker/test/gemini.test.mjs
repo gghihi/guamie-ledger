@@ -123,6 +123,23 @@ test('追問中回答「今天」時，就算 Gemini 說不像借款也照樣補
   assert.deepEqual(r.missing, []);
 });
 
+test('語音：錄音以 inlineData 送給 Gemini，並帶回聽到的文字', async () => {
+  const fake = fakeGemini({ isLoan: true, amount: 120, direction: 'partner_lent', item: '咖啡', date: today, transcript: '今天咩咩幫我付咖啡一百二' });
+  const r = await analyze({ audio: { mimeType: 'audio/wav', base64: 'UklGRg==' } }, null, ctx, env, fake);
+  const sent = JSON.parse(fake.calls[0].init.body);
+  assert.equal(sent.contents[0].parts[1].inlineData.mimeType, 'audio/wav');
+  assert.equal(r.transcript, '今天咩咩幫我付咖啡一百二');
+  assert.equal(r.fields.amount, 120);
+  assert.equal(r.source, 'gemini');
+});
+
+test('語音：Gemini 無法使用時，請使用者改用打字（規則解析聽不懂聲音）', async () => {
+  const r = await analyze({ audio: { mimeType: 'audio/wav', base64: 'UklGRg==' } }, null, ctx, env, fakeGemini(null, { status: 429 }));
+  assert.equal(r.notice, FALLBACK_NOTICE);
+  assert.match(r.question, /打字|鍵盤/);
+  assert.equal(r.fields.amount, null);
+});
+
 test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清掉', () => {
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });
