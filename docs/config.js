@@ -7,4 +7,6 @@ window.APP_CONFIG = {
     location.hostname === 'localhost' || location.hostname === '127.0.0.1'
       ? 'http://localhost:8787'
       : 'https://guamie-ledger-api.guamie-ledger-api.workers.dev',
+  // 網頁推播的公鑰（公開資訊；私鑰只存在 Cloudflare 保險箱）
+  VAPID_PUBLIC_KEY: 'BEePE0BFuEbO7TNnSLEzGA2cRW06Vzna42RiDvhDlyhtZcVgkYBHmqGahjJEucCUmqPEJQmezzusFasp8oDUhOs',
 };

@@ -93,7 +93,7 @@ export async function rejectLoan(request, env, { id }) {
   ).bind(reason, nowIso(), id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '否定');
   await logEvent(env, row, user.id, 'reject', 'pending', 'rejected', reason).run();
-  await notify(env, { type: 'rejected', toUserId: row.created_by, loan: row });
+  notify(env, { type: 'rejected', toUserId: row.created_by, loanId: id, actorId: user.id, note: reason });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
@@ -137,7 +137,7 @@ export async function resubmitLoan(request, env, { id }) {
 
   const snap = JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId });
   await logEvent(env, row, user.id, 'resubmit', 'rejected', 'pending', null, snap).run();
-  await notify(env, { type: 'resubmitted', toUserId: lc.partner.id, loan: { ...row, id } });
+  notify(env, { type: 'resubmitted', toUserId: lc.partner.id, loanId: id, actorId: user.id });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
@@ -155,7 +155,7 @@ export async function requestRepay(request, env, { id }) {
   ).bind(user.id, nowIso(), id, lc.ledgerId).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '標記還款');
   await logEvent(env, row, user.id, 'request_repay', 'unpaid', 'repay_pending').run();
-  await notify(env, { type: 'repay_pending', toUserId: lc.partner.id, loan: row });
+  notify(env, { type: 'repay_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
@@ -173,7 +173,7 @@ export async function confirmRepay(request, env, { id }) {
   ).bind(now, now, id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '確認還款');
   await logEvent(env, row, user.id, 'confirm_repay', 'repay_pending', 'paid').run();
-  await notify(env, { type: 'repay_confirmed', toUserId: row.repay_requested_by, loan: row });
+  notify(env, { type: 'repay_confirmed', toUserId: row.repay_requested_by, loanId: id, actorId: user.id });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
@@ -208,7 +208,7 @@ export async function declineRepay(request, env, { id }) {
   ).bind(nowIso(), id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '退回還款');
   await logEvent(env, row, user.id, 'decline_repay', 'repay_pending', 'unpaid', reason).run();
-  await notify(env, { type: 'repay_declined', toUserId: row.repay_requested_by, loan: row });
+  notify(env, { type: 'repay_declined', toUserId: row.repay_requested_by, loanId: id, actorId: user.id, note: reason });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 

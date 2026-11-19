@@ -7,6 +7,7 @@ import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, join
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
 import { geminiTransport } from './parse/gemini.js';
+import { subscribePush, unsubscribePush, testPush } from './push.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
   requestRepay, confirmRepay, cancelRepay, declineRepay,
@@ -74,6 +75,11 @@ const routes = {
 
   // 統整
   'GET /api/summary': getSummary,
+
+  // 網頁推播
+  'POST /api/push/subscribe': subscribePush,
+  'POST /api/push/unsubscribe': unsubscribePush,
+  'POST /api/push/test': testPush,
 };
 
 // 帶有編號的路由，例如 /api/loans/1234/approve
@@ -102,7 +108,9 @@ function findRoute(method, pathname) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, rawEnv, ctx) {
+    // 讓各功能可以把「通知」交給背景執行（不拖慢回應）
+    const env = Object.assign(Object.create(rawEnv), { waitUntil: (p) => ctx?.waitUntil?.(p) });
     if (request.method === 'OPTIONS') return handlePreflight(request, env);
 
     const { pathname } = new URL(request.url);

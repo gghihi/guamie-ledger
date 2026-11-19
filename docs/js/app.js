@@ -7,6 +7,7 @@ import { esc, toast, confirmDialog, withBusy } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
+import { registerServiceWorker, mountPushToggle } from './pushui.js';
 
 const app = document.getElementById('app');
 let state = { me: null };
@@ -125,7 +126,8 @@ function renderHome() {
     ${inviteBlock}
     <div id="summary"></div>
     <div id="recorder"></div>
-    <div id="loan-list"></div>`;
+    <div id="loan-list"></div>
+    <div id="push-toggle"></div>`;
   bindUserBar();
 
   if (together) {
@@ -134,6 +136,7 @@ function renderHome() {
     const summary = mountSummary(document.getElementById('summary'));
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
+    mountPushToggle(document.getElementById('push-toggle'));
   }
 
   document.getElementById('edit-nick')?.addEventListener('click', async (e) => {
@@ -227,6 +230,7 @@ async function refresh() {
 
 async function start() {
   renderLoading();
+  registerServiceWorker();
   const loginResult = await finishGoogleLogin();
   if (loginResult && loginResult !== 'ok') toast(loginResult, 'error');
 
@@ -241,3 +245,8 @@ async function start() {
 }
 
 start();
+
+// 切回 APP 時（例如點通知、從背景回來）自動更新畫面
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.me?.ledger) refresh().catch(() => {});
+});

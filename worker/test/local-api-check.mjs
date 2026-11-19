@@ -248,6 +248,26 @@ check('語音：沒登入 → 拒絕', v3.status === 401, v3.data);
 const v4 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/wav', base64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=' } });
 check('語音：格式正確 → 有回應（本機沒有 Gemini 金鑰，所以請使用者改用打字）', v4.status === 200 && /打字|鍵盤/.test(v4.data.question), v4.data);
 
+// ───── 第 11 階段：網頁推播訂閱 ─────
+const fakeKey = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');
+const fakeAuth = Buffer.alloc(16, 9).toString('base64url');
+const ps0 = await call('A', 'POST', '/api/push/subscribe', { endpoint: 'https://evil.example/push', keys: { p256dh: fakeKey, auth: fakeAuth } });
+check('推播：不接受正式推播服務以外的地址', ps0.status === 400, ps0.data);
+const psK = await call('A', 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/test1', keys: { p256dh: 'abc', auth: fakeAuth } });
+check('推播：鑰匙格式錯誤 → 拒絕', psK.status === 400, psK.data);
+const psOk = await call('A', 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/test1', keys: { p256dh: fakeKey, auth: fakeAuth } });
+const psAgain = await call('A', 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/test1', keys: { p256dh: fakeKey, auth: fakeAuth } });
+check('推播：開啟通知成功（重複開啟不會出錯）', psOk.status === 200 && psAgain.status === 200, [psOk.data, psAgain.data]);
+const psN = await call(null, 'POST', '/api/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/x', keys: { p256dh: fakeKey, auth: fakeAuth } });
+check('推播：沒登入不能訂閱', psN.status === 401, psN.data);
+const psT = await call('A', 'POST', '/api/push/test');
+check('推播：本機沒有 VAPID 私鑰時，測試通知回報「尚未設定」', psT.status === 503, psT.data);
+const psOff = await call('A', 'POST', '/api/push/unsubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/test1' });
+check('推播：關閉通知成功', psOff.status === 200, psOff.data);
+const nb = await newLoan('B', { item: '通知測試' });
+const na = await call('A', 'POST', `/api/loans/${nb}/approve`);
+check('有通知流程時，記帳與同意照常成功', Boolean(nb) && na.status === 200, na.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

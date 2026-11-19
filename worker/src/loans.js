@@ -91,7 +91,7 @@ export async function createLoan(request, env) {
     ).bind(id, lc.ledgerId, user.id, JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId })),
   ]);
 
-  await notify(env, { type: 'new_pending', toUserId: lc.partner.id, loan: { id } });
+  notify(env, { type: 'new_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) }, 201);
 }
 

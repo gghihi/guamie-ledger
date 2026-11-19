@@ -19,6 +19,8 @@ service = "guamie-ledger-gemini"
 ALLOWED_ORIGINS = "https://gghihi.github.io"
 # 登入完成後回到的前端網址
 FRONTEND_URL = "https://gghihi.github.io/guamie-ledger/"
+# 網頁推播 VAPID 公鑰（公開資訊；私鑰存在 Cloudflare 保險箱 VAPID_PRIVATE_KEY）
+VAPID_PUBLIC_KEY = "BEePE0BFuEbO7TNnSLEzGA2cRW06Vzna42RiDvhDlyhtZcVgkYBHmqGahjJEucCUmqPEJQmezzusFasp8oDUhOs"
 # Google 用戶端 ID（公開資訊，不是密碼；「用戶端密碼」另存在 Cloudflare 保險箱）
 GOOGLE_CLIENT_ID = "524821288754-eohili8cnos8vb5ukq6msg8k7rbi942j.apps.googleusercontent.com"
 # Gemini 模型名稱（已確認：gemini-3.8-flash）。要換模型只改這裡。
