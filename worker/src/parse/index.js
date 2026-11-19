@@ -92,7 +92,9 @@ export async function analyze(input, draft, ctx, env = {}, fetchImpl) {
     try {
       const ai = await parseWithGemini(audio ? { audio } : { text }, { today, names }, env, fetchImpl);
       transcript = ai.transcript;
-      if (!ai.isLoan) {
+      // 正在追問中（草稿已有內容）時，使用者的回答本來就不完整，不做「是不是借款」的判斷
+      const isFollowUp = FIELDS.some((k) => before[k] !== null);
+      if (!ai.isLoan && !isFollowUp) {
         const missing = missingFields(before);
         return {
           fields: before,

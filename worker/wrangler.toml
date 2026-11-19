@@ -17,6 +17,8 @@ FRONTEND_URL = "https://gghihi.github.io/guamie-ledger/"
 GOOGLE_CLIENT_ID = "524821288754-eohili8cnos8vb5ukq6msg8k7rbi942j.apps.googleusercontent.com"
 # Gemini 模型名稱（已確認：gemini-3.8-flash）。要換模型只改這裡。
 GEMINI_MODEL = "gemini-3.8-flash"
+# 主要模型忙碌或出錯時改用的備用模型（使用者 2026-11-19 同意加入）。不需要時留空字串即可。
+GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite"
 # 計算「今天」「昨天」時使用的時區
 APP_TIMEZONE = "Asia/Taipei"
 

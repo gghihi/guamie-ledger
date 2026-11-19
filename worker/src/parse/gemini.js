@@ -5,7 +5,6 @@
 import { isValidYmd } from './dates.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const TIMEOUT_MS = 8000;
 
 export class GeminiError extends Error {
   constructor(reason, detail) {
@@ -45,8 +44,8 @@ function systemPrompt(ctx) {
     '規則：',
     '1. 只擷取句子裡明確提到的資訊。不確定的欄位一律填 null 或 unknown，絕對不要猜金額或誰欠誰。',
     '2. direction：使用者幫對方付錢、借錢給對方、對方欠使用者 → me_lent；對方幫使用者付錢、使用者向對方借、使用者欠對方 → partner_lent。',
-    '3. 「請客」「送禮」「AA 已結清」不是借款，isLoan 填 false。',
-    '4. 「今天、昨天、上週五、18號」等相對日期，請依今天換算成 YYYY-MM-DD；沒提到日期就填 null，不要自動填今天。',
+    '3. 只有明確是「請客」「送禮」「AA 已結清」或與金錢無關的句子，isLoan 才填 false。資訊不完整的句子（例如只有「晚餐三百五」、只有「今天」、只有「咩咩欠我」）仍是借款的一部分，isLoan 填 true，缺的欄位填 null。',
+    '4. 「今天、昨天、上週五、18號」等相對日期，請依今天換算成 YYYY-MM-DD；沒提到日期就填 null，不要自動填今天。只說「上禮拜」「前幾天」「最近」等無法確定是哪一天的說法，也填 null。',
     '5. 金額換成新台幣整數，例如「三百五」→350、「1.5萬」→15000。若有多個數字且無法判斷哪個是金額，填 null。',
     '6. item 只寫簡短名詞，不要包含人名、金額、日期。',
   ].join('\n');
@@ -58,15 +57,37 @@ function systemPrompt(ctx) {
  */
 export async function parseWithGemini(input, ctx, env, fetchImpl = fetch) {
   if (!env.GEMINI_API_KEY) throw new GeminiError('no_key');
-  const model = env.GEMINI_MODEL;
-  if (!model) throw new GeminiError('no_model');
+  if (!env.GEMINI_MODEL) throw new GeminiError('no_model');
 
+  // 先用主要模型；忙碌、逾時或出錯時，改用備用模型（兩個都失敗才交給規則解析）
+  const attempts = [{ model: env.GEMINI_MODEL, timeout: PRIMARY_TIMEOUT_MS, thinking: true }];
+  if (env.GEMINI_FALLBACK_MODEL && env.GEMINI_FALLBACK_MODEL !== env.GEMINI_MODEL) {
+    attempts.push({ model: env.GEMINI_FALLBACK_MODEL, timeout: FALLBACK_TIMEOUT_MS, thinking: false });
+  }
+  let lastError;
+  for (const attempt of attempts) {
+    try {
+      const result = await callModel(input, ctx, env, fetchImpl, attempt);
+      return { ...result, model: attempt.model };
+    } catch (err) {
+      if (!(err instanceof GeminiError)) throw err;
+      console.warn(`Gemini 模型 ${attempt.model} 失敗：`, err.reason, err.detail || '');
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
+const PRIMARY_TIMEOUT_MS = 7000;
+const FALLBACK_TIMEOUT_MS = 10000;
+
+async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking }) {
   const parts = input.audio
     ? [{ text: '請聽這段錄音並擷取借款資料。' }, { inlineData: { mimeType: input.audio.mimeType, data: input.audio.base64 } }]
     : [{ text: input.text }];
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeout);
   let res;
   try {
     res = await fetchImpl(`${API_BASE}/${encodeURIComponent(model)}:generateContent`, {
@@ -79,7 +100,8 @@ export async function parseWithGemini(input, ctx, env, fetchImpl = fetch) {
           temperature: 0,
           responseMimeType: 'application/json',
           responseSchema: RESPONSE_SCHEMA,
-          thinkingConfig: { thinkingLevel: 'low' },
+          // 只有主要模型（Gemini 3.8）使用「低度思考」以加快速度；備用模型用預設值
+          ...(thinking ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
         },
       }),
       signal: controller.signal,
@@ -94,7 +116,7 @@ export async function parseWithGemini(input, ctx, env, fetchImpl = fetch) {
   if (!res.ok) {
     // 只記錄狀態碼與錯誤摘要，不記錄使用者輸入的內容
     const text = await res.text().catch(() => '');
-    throw new GeminiError('http', `${res.status} ${text.slice(0, 200)}`);
+    throw new GeminiError('http', `${res.status} ${text.replace(/\s+/g, ' ').slice(0, 160)}`);
   }
 
   const data = await res.json().catch(() => null);

@@ -94,6 +94,35 @@ test('Gemini 判斷不是借款（請客）→ 不填欄位，請使用者說清
   assert.match(r.question, /不像借款/);
 });
 
+test('主要模型忙碌（503）→ 改用備用模型，仍算 Gemini 解析', async () => {
+  const calls = [];
+  const impl = async (url) => {
+    calls.push(url);
+    if (url.includes('gemini-3.8-flash')) return new Response('busy', { status: 503 });
+    const answer = { isLoan: true, amount: 350, direction: 'me_lent', item: '晚餐', date: today };
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }] }));
+  };
+  const r = await analyze('今天幫咩咩付晚餐 350', null, ctx, { ...env, GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite' }, impl);
+  assert.equal(calls.length, 2);
+  assert.match(calls[1], /gemini-3\.5-flash-lite/);
+  assert.equal(r.source, 'gemini');
+  assert.equal(r.notice, null);
+  assert.equal(r.fields.amount, 350);
+});
+
+test('主要與備用模型都失敗 → 才改用規則解析', async () => {
+  const r = await analyze('晚餐 350', null, ctx, { ...env, GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite' }, fakeGemini(null, { status: 503 }));
+  assert.equal(r.source, 'rules');
+  assert.equal(r.notice, FALLBACK_NOTICE);
+});
+
+test('追問中回答「今天」時，就算 Gemini 說不像借款也照樣補欄位', async () => {
+  const fake = fakeGemini({ isLoan: false, amount: null, direction: 'unknown', item: null, date: today });
+  const r = await analyze('今天', { amount: 350, direction: 'me_lent', item: '晚餐', date: null }, ctx, env, fake);
+  assert.equal(r.fields.date, today);
+  assert.deepEqual(r.missing, []);
+});
+
 test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清掉', () => {
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });
