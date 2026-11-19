@@ -41,6 +41,19 @@ export function confirmDialog({ title, message, okText = '確認', cancelText = 
   });
 }
 
+/** 開一個自訂內容的視窗；回傳 { el, close } */
+export function openModal(innerHtml) {
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop';
+  wrap.innerHTML = `<div class="modal card" role="dialog" aria-modal="true">${innerHtml}</div>`;
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap || e.target.closest('[data-close]')) close();
+  });
+  document.body.appendChild(wrap);
+  return { el: wrap.querySelector('.modal'), close };
+}
+
 /** 按鈕送出時先變成「處理中」，避免重複按 */
 export async function withBusy(button, task) {
   const label = button.textContent;

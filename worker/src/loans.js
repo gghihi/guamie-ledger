@@ -6,6 +6,7 @@ import { requireMyLedger } from './ledgers.js';
 import { analyze, missingFields, sanitizeDraft, FIELDS } from './parse/index.js';
 import { todayIn } from './parse/dates.js';
 import { HttpError, json, readJson, newId, cleanText } from './util.js';
+import { notify } from './notify.js';
 
 /**
  * 取得「我、對方、帳本」的資料。記帳一定要兩個人都在小窩裡。
@@ -70,6 +71,7 @@ export async function createLoan(request, env) {
     ).bind(id, lc.ledgerId, user.id, JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId })),
   ]);
 
+  await notify(env, { type: 'new_pending', toUserId: lc.partner.id, loan: { id } });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) }, 201);
 }
 
@@ -90,7 +92,7 @@ const LOAN_SELECT = `
     LEFT JOIN ledger_members mb ON mb.ledger_id = l.ledger_id AND mb.user_id = l.borrower_id
     LEFT JOIN ledger_members mc ON mc.ledger_id = l.ledger_id AND mc.user_id = l.created_by`;
 
-async function getLoan(env, lc, id, meId) {
+export async function getLoan(env, lc, id, meId) {
   const row = await env.DB.prepare(`${LOAN_SELECT} WHERE l.id = ? AND l.ledger_id = ?`).bind(id, lc.ledgerId).first();
   return row ? toLoan(row, meId) : null;
 }
@@ -113,5 +115,5 @@ function toLoan(r, meId) {
   };
 }
 
-const fieldName = (key) => ({ amount: '金額', direction: '誰欠誰', item: '項目', date: '日期' })[key] || key;
+export const fieldName = (key) => ({ amount: '金額', direction: '誰欠誰', item: '項目', date: '日期' })[key] || key;
 export { FIELDS };

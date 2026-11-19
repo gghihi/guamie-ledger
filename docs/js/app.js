@@ -129,7 +129,7 @@ function renderHome() {
   if (together) {
     const me = ledger.members.find((m) => m.isMe);
     const partner = ledger.members.find((m) => !m.isMe);
-    const list = mountLoanList(document.getElementById('loan-list'));
+    const list = mountLoanList(document.getElementById('loan-list'), { partner });
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
   }
 

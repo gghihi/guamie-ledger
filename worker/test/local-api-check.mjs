@@ -98,6 +98,62 @@ check('C 的小窩只有一個人 → 不能記帳', pc.status === 409, pc.data)
 const lc = await call('C', 'GET', '/api/loans');
 check('帳本隔離：C 看不到 A、B 的借款', lc.status === 200 && lc.data.loans.length === 0, lc.data);
 
+// ───── 第 7 階段：同意、否定、撤回、修改重送 ─────
+const loanId = cl2.data.loan.id;
+const newLoan = async (who, extra = {}) =>
+  (await call(who, 'POST', '/api/loans', { amount: 100, direction: 'me_lent', item: '測試', date: today, ...extra })).data.loan.id;
+
+const s1 = await call('B', 'POST', `/api/loans/${loanId}/approve`);
+check('自己記的帳不能自己同意', s1.status === 403, s1.data);
+
+const s2 = await call('A', 'POST', `/api/loans/${loanId}/reject`, { reason: '金額不對' });
+check('A 否定 B 的帳（附原因）→ 變成「被否定」', s2.status === 200 && s2.data.loan.status === 'rejected' && s2.data.loan.rejectReason === '金額不對', s2.data);
+
+const s3 = await call('A', 'POST', `/api/loans/${loanId}/approve`);
+check('已否定的帳不能再同意', s3.status === 409, s3.data);
+
+const s4 = await call('A', 'DELETE', `/api/loans/${loanId}`);
+check('被否定的帳，只有記帳的人能刪除', s4.status === 403, s4.data);
+
+const s5 = await call('A', 'PUT', `/api/loans/${loanId}`, { amount: 400, direction: 'partner_lent', item: '晚餐', date: today });
+check('對方不能修改我記的帳', s5.status === 403, s5.data);
+
+const s6 = await call('B', 'PUT', `/api/loans/${loanId}`, { amount: 400, direction: 'me_lent', item: '晚餐', date: today });
+check('B 修改後重送 → 回到「待確認」，否定原因清除', s6.status === 200 && s6.data.loan.status === 'pending' && s6.data.loan.amount === 400 && !s6.data.loan.rejectReason, s6.data);
+
+const s7 = await call('A', 'POST', `/api/loans/${loanId}/approve`);
+check('A 同意 → 變成「未還」', s7.status === 200 && s7.data.loan.status === 'unpaid', s7.data);
+
+const s8 = await call('B', 'POST', `/api/loans/${loanId}/withdraw`);
+check('已同意的帳不能撤回', s8.status === 409, s8.data);
+
+const ev = await call('B', 'GET', `/api/loans/${loanId}/events`);
+check('狀態紀錄依序為：建立→否定→重送→同意', ev.data.events?.map((e) => e.action).join(',') === 'create,reject,resubmit,approve', ev.data);
+
+const w1 = await newLoan('B');
+const w2 = await call('A', 'POST', `/api/loans/${w1}/withdraw`);
+check('只有記帳的人可以撤回', w2.status === 403, w2.data);
+const w3 = await call('B', 'POST', `/api/loans/${w1}/withdraw`);
+const afterW = await call('A', 'GET', '/api/loans');
+check('B 撤回 → 這筆消失', w3.status === 200 && !afterW.data.loans.some((l) => l.id === w1), w3.data);
+
+const d1 = await newLoan('B');
+await call('A', 'POST', `/api/loans/${d1}/reject`, {});
+const d2 = await call('B', 'DELETE', `/api/loans/${d1}`);
+check('被否定的帳，記帳的人可以刪除', d2.status === 200, d2.data);
+
+await newLoan('B', { item: '一' });
+await newLoan('B', { item: '二' });
+const mine = await newLoan('A', { item: 'A自己的' });
+const all = await call('A', 'POST', '/api/loans/approve-all');
+const afterAll = await call('A', 'GET', '/api/loans');
+check('全部同意：只同意對方記的 2 筆，自己記的不受影響', all.data.approved === 2
+  && afterAll.data.loans.find((l) => l.id === mine).status === 'pending', all.data);
+
+const x1 = await call('C', 'POST', `/api/loans/${mine}/approve`);
+const x2 = await call('C', 'GET', `/api/loans/${loanId}/events`);
+check('別的小窩不能操作或查看這本帳的紀錄', x1.status !== 200 && x2.status !== 200, [x1.status, x2.status]);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

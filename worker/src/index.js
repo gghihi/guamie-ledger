@@ -5,6 +5,7 @@ import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
 import { parseText, createLoan, listLoans } from './loans.js';
+import { approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents } from './loanActions.js';
 
 async function health(request, env) {
   // 順便確認資料庫連得上（只數資料表數量，不讀任何帳目內容）
@@ -48,18 +49,40 @@ const routes = {
   'POST /api/parse': parseText,
   'GET /api/loans': listLoans,
   'POST /api/loans': createLoan,
+  'POST /api/loans/approve-all': approveAll,
 };
+
+// 帶有編號的路由，例如 /api/loans/1234/approve
+const ID = '([0-9a-f-]{36})';
+const paramRoutes = [
+  ['POST', new RegExp(`^/api/loans/${ID}/approve$`), approveLoan],
+  ['POST', new RegExp(`^/api/loans/${ID}/reject$`), rejectLoan],
+  ['POST', new RegExp(`^/api/loans/${ID}/withdraw$`), withdrawLoan],
+  ['PUT', new RegExp(`^/api/loans/${ID}$`), resubmitLoan],
+  ['DELETE', new RegExp(`^/api/loans/${ID}$`), deleteLoan],
+  ['GET', new RegExp(`^/api/loans/${ID}/events$`), loanEvents],
+];
+
+function findRoute(method, pathname) {
+  const exact = routes[`${method} ${pathname}`];
+  if (exact) return { handler: exact, params: {} };
+  for (const [m, re, handler] of paramRoutes) {
+    const match = m === method && pathname.match(re);
+    if (match) return { handler, params: { id: match[1] } };
+  }
+  return null;
+}
 
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return handlePreflight(request, env);
 
     const { pathname } = new URL(request.url);
-    const handler = routes[`${request.method} ${pathname}`];
-    if (!handler) return json(request, env, { ok: false, error: '找不到這個功能' }, 404);
+    const route = findRoute(request.method, pathname);
+    if (!route) return json(request, env, { ok: false, error: '找不到這個功能' }, 404);
 
     try {
-      return await handler(request, env);
+      return await route.handler(request, env, route.params);
     } catch (err) {
       if (err instanceof HttpError) {
         return json(request, env, { ok: false, error: err.message, code: err.code }, err.status);

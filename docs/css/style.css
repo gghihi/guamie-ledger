@@ -303,3 +303,22 @@ input:focus { border-color: var(--frog); }
   background: var(--sheep-shade);
   border-radius: 999px;
 }
+
+/* ───── 第 7 階段：清單按鈕、否定、紀錄 ───── */
+.loan { flex-direction: column; gap: 8px; }
+.loan-body {
+  display: flex; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.loan-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.loan-actions .btn.tiny { padding: 6px 14px; }
+.reason { display: block; color: var(--danger); font-size: 0.85rem; }
+.btn.danger { color: var(--danger); border-color: #e8a493; box-shadow: 0 3px 0 #e8a493; }
+.btn.danger-fill { background: var(--danger); border-color: #9e3f2b; box-shadow: 0 4px 0 #9e3f2b; }
+.btn.approve-all { margin: 12px 0 0; }
+.modal h3 { margin: 16px 0 8px; font-size: 1rem; color: var(--wood-dark); }
+.modal { max-height: 90vh; overflow-y: auto; }
+.timeline { list-style: none; padding: 0 0 0 14px; margin: 0 0 12px; border-left: 3px dotted var(--frog); }
+.timeline li { position: relative; padding: 4px 0 10px 10px; display: flex; flex-direction: column; }
+.timeline li::before { content: '🐾'; position: absolute; left: -22px; top: 2px; font-size: 0.8rem; }
+.timeline .when { font-size: 0.8rem; color: var(--muted); }
