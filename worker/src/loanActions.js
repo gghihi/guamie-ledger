@@ -177,6 +177,41 @@ export async function confirmRepay(request, env, { id }) {
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
+/** POST /api/loans/:id/cancel-repay：標記的人按錯了，取消還款標記 → 回到未還 */
+export async function cancelRepay(request, env, { id }) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const row = await loadLoanRow(env, lc, id);
+  if (row.status !== 'repay_pending') throw stateError(row, '取消還款標記');
+  if (row.repay_requested_by !== user.id) throw new HttpError(403, '只有標記還款的人可以取消；你可以按「還沒收到」', 'not_allowed');
+
+  const res = await env.DB.prepare(
+    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by = ?",
+  ).bind(nowIso(), id, lc.ledgerId, user.id).run();
+  if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '取消還款標記');
+  await logEvent(env, row, user.id, 'cancel_repay', 'repay_pending', 'unpaid').run();
+  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+}
+
+/** POST /api/loans/:id/decline-repay：對方說「還沒收到」→ 退回未還（可附原因），並通知標記的人 */
+export async function declineRepay(request, env, { id }) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const body = await readJson(request).catch(() => ({}));
+  const reason = cleanText(body.reason, 100) || null;
+  const row = await loadLoanRow(env, lc, id);
+  if (row.status !== 'repay_pending') throw stateError(row, '退回還款');
+  if (row.repay_requested_by === user.id) throw new HttpError(403, '自己標記的還款請用「取消標記」', 'not_allowed');
+
+  const res = await env.DB.prepare(
+    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by <> ?",
+  ).bind(nowIso(), id, lc.ledgerId, user.id).run();
+  if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '退回還款');
+  await logEvent(env, row, user.id, 'decline_repay', 'repay_pending', 'unpaid', reason).run();
+  await notify(env, { type: 'repay_declined', toUserId: row.repay_requested_by, loan: row });
+  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+}
+
 /**
  * DELETE /api/loans/:id：刪除紀錄
  *  被否定 rejected：記帳的人可以刪除

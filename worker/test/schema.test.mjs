@@ -1,12 +1,14 @@
-// 資料庫規則自動測試（第 3 階段）
+// 資料庫規則自動測試（第 3 階段起，每次新增遷移檔都會一起測）
 // 白話：把資料表建在電腦記憶體裡的一個「練習用資料庫」，故意塞錯誤資料，確認資料庫會擋下來。
 // 執行方式：npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
-const migration = readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
+// 依序套用所有遷移檔（和雲端資料庫相同的順序）
+const dir = new URL('../migrations/', import.meta.url);
+const migration = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
 
 function freshDb() {
   const db = new DatabaseSync(':memory:');
@@ -35,12 +37,12 @@ const addLoan = (db, over = {}) => {
   );
 };
 
-test('12 張資料表全部建立成功', () => {
+test('所有資料表都建立成功', () => {
   const db = freshDb();
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
   assert.deepEqual(names, [
     'invite_codes', 'ledger_members', 'ledgers', 'line_bind_codes', 'line_bindings', 'line_drafts',
-    'line_push_usage', 'loan_events', 'loans', 'push_subscriptions', 'sessions', 'users',
+    'line_push_usage', 'loan_events', 'loans', 'login_codes', 'push_subscriptions', 'sessions', 'users',
   ]);
 });
 
@@ -97,4 +99,12 @@ test('刪除帳本時，該帳本的成員與借款一併清除（不會殘留�
   db.prepare("DELETE FROM ledgers WHERE id='L1'").run();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM loans').get().n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ledger_members').get().n, 0);
+});
+
+test('狀態紀錄接受「取消還款標記」「還沒收到」兩種新動作', () => {
+  const db = freshDb();
+  for (const action of ['cancel_repay', 'decline_repay']) {
+    db.prepare("INSERT INTO loan_events (loan_id, ledger_id, actor_id, action) VALUES ('x', 'L1', 'u1', ?)").run(action);
+  }
+  assert.throws(() => db.prepare("INSERT INTO loan_events (loan_id, ledger_id, actor_id, action) VALUES ('x', 'L1', 'u1', 'hack')").run(), /CHECK/);
 });

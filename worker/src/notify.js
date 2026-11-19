@@ -9,6 +9,7 @@
  *  resubmitted     修改後重送（通知對方）
  *  repay_pending   還款待確認（第 8 階段）
  *  repay_confirmed 還款已確認（第 8 階段）
+ *  repay_declined  對方表示還沒收到還款（第 8 階段補充）
  */
 export async function notify(env, { type, toUserId, loan }) {
   // 只記錄種類與對象，不記錄金額、項目等內容

@@ -7,7 +7,7 @@ import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, join
 import { parseText, createLoan, listLoans } from './loans.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
-  requestRepay, confirmRepay,
+  requestRepay, confirmRepay, cancelRepay, declineRepay,
 } from './loanActions.js';
 
 async function health(request, env) {
@@ -66,6 +66,8 @@ const paramRoutes = [
   ['GET', new RegExp(`^/api/loans/${ID}/events$`), loanEvents],
   ['POST', new RegExp(`^/api/loans/${ID}/repay$`), requestRepay],
   ['POST', new RegExp(`^/api/loans/${ID}/confirm-repay$`), confirmRepay],
+  ['POST', new RegExp(`^/api/loans/${ID}/cancel-repay$`), cancelRepay],
+  ['POST', new RegExp(`^/api/loans/${ID}/decline-repay$`), declineRepay],
 ];
 
 function findRoute(method, pathname) {

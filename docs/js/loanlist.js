@@ -13,7 +13,8 @@ const TABS = [
 const STATUS_NAME = { pending: '待確認', unpaid: '未還', repay_pending: '已還待確認', paid: '已還', rejected: '被否定' };
 const ACTION_NAME = {
   create: '記了這筆帳', approve: '同意了', reject: '否定了', resubmit: '修改後重送',
-  withdraw: '撤回了', request_repay: '標記已還款', confirm_repay: '確認已還款', delete: '刪除了',
+  withdraw: '撤回了', request_repay: '標記已還款', confirm_repay: '確認已還款',
+  cancel_repay: '取消了還款標記', decline_repay: '表示還沒收到還款', delete: '刪除了',
 };
 
 /** ctx = { partner: { nickname } } */
@@ -52,9 +53,13 @@ export function mountLoanList(container, ctx) {
       return `<button class="btn tiny" data-act="repay" data-id="${l.id}">已還款</button>`;
     }
     if (l.status === 'repay_pending' && !l.repayRequestedByMe) {
-      return `<button class="btn tiny" data-act="confirm-repay" data-id="${l.id}">確認已還</button>`;
+      return `<button class="btn tiny" data-act="confirm-repay" data-id="${l.id}">確認已還</button>
+              <button class="btn tiny ghost" data-act="decline-repay" data-id="${l.id}">還沒收到</button>`;
     }
-    if (l.status === 'repay_pending') return `<small class="hint">已標記還款，等${esc(partner)}確認</small>`;
+    if (l.status === 'repay_pending') {
+      return `<small class="hint">等${esc(partner)}確認</small>
+              <button class="btn tiny ghost" data-act="cancel-repay" data-id="${l.id}">取消標記</button>`;
+    }
     if (l.status === 'paid') {
       return `<button class="btn tiny ghost danger" data-act="delete" data-id="${l.id}">刪除</button>`;
     }
@@ -109,7 +114,7 @@ export function mountLoanList(container, ctx) {
     const loan = loans.find((l) => l.id === btn.dataset.id);
     const handlers = {
       approve, reject, withdraw, edit, delete: remove, detail, 'approve-all': approveAll,
-      repay, 'confirm-repay': confirmRepay,
+      repay, 'confirm-repay': confirmRepay, 'cancel-repay': cancelRepay, 'decline-repay': declineRepay,
     };
     await handlers[btn.dataset.act]?.(loan, btn);
   });
@@ -195,6 +200,40 @@ export function mountLoanList(container, ctx) {
       toast('還款完成 🎉', 'ok');
       await refresh();
     });
+  }
+
+  async function cancelRepay(l, btn) {
+    const ok = await confirmDialog({
+      title: '取消還款標記？',
+      message: `${describe(l)}\n\n這筆會回到「未還」。`,
+      okText: '取消標記',
+      cancelText: '先不要',
+    });
+    if (!ok) return;
+    await withBusy(btn, async () => {
+      await api(`/api/loans/${l.id}/cancel-repay`, { method: 'POST' });
+      toast('已取消標記，回到未還', 'ok');
+      await refresh();
+    });
+  }
+
+  function declineRepay(l) {
+    const { el, close } = openModal(`
+      <h2>還沒收到這筆還款？</h2>
+      <p>${esc(describe(l))}</p>
+      <label>說明（可不填）<input id="decline-reason" maxlength="100" placeholder="例如：還沒收到轉帳" /></label>
+      <p class="hint">這筆會回到「未還」，並通知${esc(partner)}。</p>
+      <div class="row">
+        <button class="btn ghost" data-close>先不要</button>
+        <button class="btn danger-fill" id="do-decline">確認退回</button>
+      </div>`);
+    el.querySelector('#do-decline').onclick = (e) =>
+      withBusy(e.currentTarget, async () => {
+        await api(`/api/loans/${l.id}/decline-repay`, { method: 'POST', body: { reason: el.querySelector('#decline-reason').value.trim() } });
+        close();
+        toast('已退回，會通知對方', 'ok');
+        await refresh();
+      });
   }
 
   async function remove(l, btn) {

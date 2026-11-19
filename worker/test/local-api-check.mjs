@@ -184,6 +184,27 @@ const pr7 = await call('A', 'DELETE', `/api/loans/${loanId}`);
 const afterDel = await call('B', 'GET', '/api/loans');
 check('已還的紀錄任一方都能刪除（A 刪 B 記的）', pr7.status === 200 && !afterDel.data.loans.some((l) => l.id === loanId), pr7.data);
 
+// ───── 第 8 階段補充：按錯「已還款」時可以退回 ─────
+const u1 = await newLoan('B', { item: '退回測試' });
+await call('A', 'POST', `/api/loans/${u1}/approve`);
+await call('A', 'POST', `/api/loans/${u1}/repay`);
+const uc1 = await call('B', 'POST', `/api/loans/${u1}/cancel-repay`);
+check('不是標記的人不能「取消標記」', uc1.status === 403, uc1.data);
+const uc2 = await call('A', 'POST', `/api/loans/${u1}/cancel-repay`);
+check('標記的人取消標記 → 回到「未還」', uc2.status === 200 && uc2.data.loan.status === 'unpaid' && uc2.data.loan.repayRequestedByMe === null, uc2.data);
+
+await call('A', 'POST', `/api/loans/${u1}/repay`);
+const uc3 = await call('A', 'POST', `/api/loans/${u1}/decline-repay`, { reason: 'x' });
+check('標記的人不能自己按「還沒收到」', uc3.status === 403, uc3.data);
+const uc4 = await call('B', 'POST', `/api/loans/${u1}/decline-repay`, { reason: '還沒收到錢' });
+check('對方按「還沒收到」→ 回到「未還」', uc4.status === 200 && uc4.data.loan.status === 'unpaid', uc4.data);
+const uc5 = await call('B', 'POST', `/api/loans/${u1}/decline-repay`);
+check('未還的帳不能再退回', uc5.status === 409, uc5.data);
+const evU = await call('A', 'GET', `/api/loans/${u1}/events`);
+const lastU = evU.data.events.slice(-4);
+check('狀態紀錄有「取消標記」與「還沒收到（原因）」', lastU.map((e) => e.action).join(',') === 'request_repay,cancel_repay,request_repay,decline_repay'
+  && lastU[3].note === '還沒收到錢', evU.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 
