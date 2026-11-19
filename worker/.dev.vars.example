@@ -1,12 +1,12 @@
 # 本機測試用的密碼「範本」：只有欄位名稱，沒有真正的值。
 # 使用方式：複製一份並改名為 .dev.vars（此檔已被 .gitignore 排除，不會上傳），再填入值。
-# 正式上線時，這些值一律用「wrangler secret put 名稱」存進 Cloudflare 的密碼保險箱。
+# 正式上線時，這些值一律用「npx wrangler secret put 名稱」存進 Cloudflare 的密碼保險箱。
+# （Google 用戶端 ID 不是密碼，寫在 wrangler.toml 的 [vars]）
 
 # Google 登入（第 4 階段）
-GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
-# 後端自己簽發通行證用的隨機密鑰（第 4 階段，由程式產生）
+# 後端自己簽發登入暗號用的隨機密鑰（第 4 階段，由程式產生）
 SESSION_SECRET=
 
 # Gemini（第 6 階段）

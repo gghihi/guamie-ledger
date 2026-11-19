@@ -5,7 +5,7 @@
 const LOCAL_DEV_ORIGINS = ['http://localhost:5500', 'http://127.0.0.1:5500'];
 
 /** 取得允許的網站清單 */
-function allowedOrigins(env, request) {
+export function allowedOrigins(env, request) {
   const list = (env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())

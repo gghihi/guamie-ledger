@@ -11,6 +11,10 @@ compatibility_date = "2026-11-01"
 # 允許呼叫後端的網站（GitHub Pages 網域）；第 2 階段上線後改成實際網址。
 # 多個網址用逗號分隔；本機測試網址只在本機開發時有效（見 src/cors.js）。
 ALLOWED_ORIGINS = "https://gghihi.github.io"
+# 登入完成後回到的前端網址
+FRONTEND_URL = "https://gghihi.github.io/guamie-ledger/"
+# Google 用戶端 ID（公開資訊，不是密碼；「用戶端密碼」另存在 Cloudflare 保險箱）
+GOOGLE_CLIENT_ID = ""
 # Gemini 模型名稱（已確認：gemini-3.8-flash）。要換模型只改這裡。
 GEMINI_MODEL = "gemini-3.8-flash"
 # 計算「今天」「昨天」時使用的時區
