@@ -64,6 +64,40 @@ const p1 = await call('A', 'POST', '/api/me/privacy-ack');
 const aMe2 = await call('A', 'GET', '/api/me');
 check('隱私提醒按「我知道了」後會記住', p1.status === 200 && aMe2.data.user.privacyAcknowledged === true);
 
+// ───── 第 5 階段：記帳 ─────
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+const yesterday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date(Date.now() - 86400000));
+const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date(Date.now() + 86400000));
+
+const ps1 = await call('B', 'POST', '/api/parse', { text: '昨天幫呱呱付晚餐 350' });
+check('B 解析「昨天幫呱呱付晚餐 350」→ 四個欄位都抓到', ps1.status === 200 && ps1.data.missing.length === 0
+  && ps1.data.fields.amount === 350 && ps1.data.fields.direction === 'me_lent' && ps1.data.fields.item === '晚餐' && ps1.data.fields.date === yesterday, ps1.data);
+
+const ps2 = await call('B', 'POST', '/api/parse', { text: '晚餐 350', draft: null });
+check('缺漏時會追問誰欠誰', ps2.data.missing.join(',') === 'direction,date' && /借給/.test(ps2.data.question), ps2.data);
+
+const ps3 = await call('B', 'POST', '/api/parse', { text: '呱呱欠我 今天', draft: ps2.data.fields });
+check('回答追問後草稿補齊（金額與項目保留）', ps3.data.missing.length === 0 && ps3.data.fields.amount === 350 && ps3.data.fields.date === today, ps3.data);
+
+const cl0 = await call('B', 'POST', '/api/loans', { amount: 350, direction: 'me_lent', item: '', date: today });
+check('欄位沒填完不能送出', cl0.status === 400, cl0.data);
+
+const cl1 = await call('B', 'POST', '/api/loans', { amount: 350, direction: 'me_lent', item: '晚餐', date: tomorrow });
+check('日期不能是未來', cl1.status === 400, cl1.data);
+
+const cl2 = await call('B', 'POST', '/api/loans', { ...ps1.data.fields, parseSource: 'rules' });
+check('B 送出一筆 → 狀態是「待確認」，呱呱欠咩咩寶', cl2.status === 201 && cl2.data.loan.status === 'pending'
+  && cl2.data.loan.borrower.name === '呱呱' && cl2.data.loan.lender.isMe, cl2.data);
+
+const la = await call('A', 'GET', '/api/loans');
+check('A 看得到這筆，而且標示「不是我建立的」', la.data.loans.length === 1 && la.data.loans[0].createdByMe === false && la.data.loans[0].borrower.isMe, la.data);
+
+const pc = await call('C', 'POST', '/api/parse', { text: '晚餐 100' });
+check('C 的小窩只有一個人 → 不能記帳', pc.status === 409, pc.data);
+
+const lc = await call('C', 'GET', '/api/loans');
+check('帳本隔離：C 看不到 A、B 的借款', lc.status === 200 && lc.data.loans.length === 0, lc.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

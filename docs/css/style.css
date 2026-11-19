@@ -198,3 +198,97 @@ input:focus { border-color: var(--frog); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.ok { background: var(--frog-dark); }
 .toast.error { background: var(--danger); }
+
+/* ───── 小窩資訊（可收合） ───── */
+.nest-info summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.nest-info summary::-webkit-details-marker { display: none; }
+.nest-info summary h2 { margin: 0; }
+.center-text { text-align: center; }
+
+/* ───── 對話式記帳 ───── */
+.chat-log {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px 8px;
+}
+.bubble { display: flex; gap: 6px; align-items: flex-end; max-width: 88%; }
+.bubble p { margin: 0; padding: 10px 14px; border-radius: 18px; line-height: 1.5; white-space: pre-line; }
+.bubble.bot p { background: #eaf6dc; border: 2px solid #cfe8b3; border-bottom-left-radius: 6px; }
+.bubble.me { align-self: flex-end; }
+.bubble.me p { background: #fff; border: 2px solid var(--sheep-shade); border-bottom-right-radius: 6px; }
+.bubble .who { font-size: 1.4rem; }
+
+.chat-input { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input input { margin: 0; }
+.chat-input .btn.send { width: auto; margin: 0; padding: 10px 16px; white-space: nowrap; }
+
+/* ───── 解析結果卡片 ───── */
+.draft {
+  margin-top: 10px;
+  padding: 14px;
+  background: #fffaf0;
+  border: 3px dashed var(--wood);
+  border-radius: 18px;
+}
+.draft-title { font-weight: 700; color: var(--wood-dark); }
+.draft-title small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.field { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 0.95rem; }
+.field.missing { color: var(--danger); }
+.field.missing input, .field.missing .seg button { border-color: #f0b8a8; background: #fff6f3; }
+.seg { display: flex; gap: 8px; margin-top: 6px; }
+.seg button {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  padding: 10px 6px;
+  border-radius: 14px;
+  border: 3px solid var(--sheep-shade);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+.seg button small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--muted); }
+.seg button.on { border-color: var(--frog); background: #eaf6dc; color: var(--frog-dark); }
+.quick { display: flex; gap: 6px; margin-top: 6px; }
+.quick button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 2px solid var(--wood);
+  background: #fff;
+  color: var(--wood-dark);
+  cursor: pointer;
+}
+
+/* ───── 清單分頁 ───── */
+.tabs { display: flex; gap: 6px; background: var(--sheep-shade); padding: 4px; border-radius: 999px; }
+.tabs button {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 4px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tabs button.on { background: #fff; color: var(--frog-dark); box-shadow: var(--shadow-sm); }
+.tabs .count { display: inline-block; min-width: 20px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--wood); color: #fff; font-size: 0.75rem; }
+.loans { list-style: none; padding: 0; margin: 8px 0 0; }
+.loan { display: flex; justify-content: space-between; gap: 10px; padding: 12px 4px; border-bottom: 2px dashed var(--sheep-shade); }
+.loan:last-child { border-bottom: none; }
+.loan-main strong { display: block; }
+.loan-main small { color: var(--muted); }
+.loan-side { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.loan .amount { font-weight: 900; font-size: 1.1rem; }
+.loan.owe-me .amount { color: var(--frog-dark); }
+.loan.i-owe .amount { color: var(--warn); }
+.tag.wait { background: var(--wood); }
+.tag.todo { background: var(--warn); }
+.tag.no { background: var(--danger); }
+.empty { padding: 16px 0; }

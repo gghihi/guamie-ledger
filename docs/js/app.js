@@ -1,67 +1,14 @@
-// 呱咩小窩帳｜前端主程式（第 4 階段：登入、建立／加入小窩、邀請碼）
+// 呱咩小窩帳｜前端主程式
+// 第 4 階段：登入、建立／加入小窩、邀請碼
+// 第 5 階段：對話式記帳、借款清單
 
 import { api, getToken, startGoogleLogin, finishGoogleLogin, logout } from './api.js';
+import { esc, toast, confirmDialog, withBusy } from './ui.js';
+import { mountRecorder } from './record.js';
+import { mountLoanList } from './loanlist.js';
 
 const app = document.getElementById('app');
 let state = { me: null };
-
-// ───────── 小工具 ─────────
-
-/** 把文字轉成安全的 HTML（防止別人在暱稱裡塞程式碼） */
-function esc(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
-
-function toast(message, type = 'info') {
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = message;
-  document.body.appendChild(el);
-  setTimeout(() => el.classList.add('show'), 10);
-  setTimeout(() => {
-    el.classList.remove('show');
-    setTimeout(() => el.remove(), 300);
-  }, 3200);
-}
-
-/** 確認畫面：回傳 Promise，按「確認」為 true、按「取消」為 false */
-function confirmDialog({ title, message, okText = '確認', cancelText = '取消' }) {
-  return new Promise((resolve) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'modal-backdrop';
-    wrap.innerHTML = `
-      <div class="modal card" role="dialog" aria-modal="true">
-        <h2>${esc(title)}</h2>
-        <p>${esc(message)}</p>
-        <div class="row">
-          <button class="btn ghost" data-v="0">${esc(cancelText)}</button>
-          <button class="btn" data-v="1">${esc(okText)}</button>
-        </div>
-      </div>`;
-    wrap.addEventListener('click', (e) => {
-      const v = e.target.dataset?.v;
-      if (v === undefined && e.target !== wrap) return;
-      wrap.remove();
-      resolve(v === '1');
-    });
-    document.body.appendChild(wrap);
-  });
-}
-
-/** 按鈕送出時先變成「處理中」，避免重複按 */
-async function withBusy(button, task) {
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = '處理中…';
-  try {
-    await task();
-  } catch (err) {
-    toast(err.message, 'error');
-  } finally {
-    button.disabled = false;
-    button.textContent = label;
-  }
-}
 
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric' });
@@ -135,6 +82,7 @@ function renderSetup() {
 
 function renderHome() {
   const { ledger } = state.me;
+  const together = ledger.members.length === 2;
   const members = ledger.members
     .map(
       (m) => `
@@ -149,9 +97,9 @@ function renderHome() {
     )
     .join('');
 
-  const inviteBlock =
-    ledger.members.length < 2
-      ? `
+  const inviteBlock = together
+    ? ''
+    : `
     <section class="card">
       <h2>💌 邀請另一半</h2>
       ${
@@ -164,23 +112,29 @@ function renderHome() {
              </div>`
           : `<p class="hint">邀請碼已過期。</p><button class="btn" id="new-invite">產生新的邀請碼</button>`
       }
-    </section>`
-      : '';
+    </section>
+    <section class="card center soon"><p>📒 另一半加入後，就可以開始記帳囉！</p></section>`;
 
   app.innerHTML = `
     ${userBar()}
-    <section class="card">
-      <h2>🏡 ${esc(ledger.name)}</h2>
+    <details class="card nest-info" ${together ? '' : 'open'}>
+      <summary><h2>🏡 ${esc(ledger.name)}</h2><span class="hint">${together ? '兩個人都到齊了' : '等另一半加入中…'}</span></summary>
       <ul class="members">${members}</ul>
-      ${ledger.members.length < 2 ? '<p class="hint">還在等另一半加入…</p>' : '<p class="hint ok-text">兩個人都到齊了！</p>'}
-    </section>
+    </details>
     ${inviteBlock}
-    <section class="card center soon">
-      <p>📒 記帳功能施工中，下一階段就會出現喔！</p>
-    </section>`;
+    <div id="recorder"></div>
+    <div id="loan-list"></div>`;
   bindUserBar();
 
+  if (together) {
+    const me = ledger.members.find((m) => m.isMe);
+    const partner = ledger.members.find((m) => !m.isMe);
+    const list = mountLoanList(document.getElementById('loan-list'));
+    mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
+  }
+
   document.getElementById('edit-nick')?.addEventListener('click', async (e) => {
+    e.preventDefault();
     const me = ledger.members.find((m) => m.isMe);
     const nickname = prompt('新的暱稱（最多 12 個字）', me.nickname);
     if (nickname === null) return;

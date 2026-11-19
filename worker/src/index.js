@@ -4,6 +4,7 @@ import { handlePreflight } from './cors.js';
 import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
+import { parseText, createLoan, listLoans } from './loans.js';
 
 async function health(request, env) {
   // 順便確認資料庫連得上（只數資料表數量，不讀任何帳目內容）
@@ -42,6 +43,11 @@ const routes = {
   'POST /api/ledgers': createLedger,
   'POST /api/ledgers/invite': regenerateInvite,
   'POST /api/ledgers/join': joinLedger,
+
+  // 記帳
+  'POST /api/parse': parseText,
+  'GET /api/loans': listLoans,
+  'POST /api/loans': createLoan,
 };
 
 export default {
