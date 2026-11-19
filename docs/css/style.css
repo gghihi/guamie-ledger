@@ -1,0 +1,80 @@
+/* 呱咩小窩帳｜外觀樣式
+   主題：可愛擬物風，青蛙（呱呱）的嫩綠 + 綿羊（咩咩）的奶油白，像一個溫暖的小窩。 */
+
+:root {
+  --cream: #fff8ec;        /* 小窩的牆：奶油色 */
+  --wood: #c89f72;         /* 木頭邊框 */
+  --wood-dark: #8d6a45;
+  --frog: #8bc34a;         /* 呱呱綠 */
+  --frog-dark: #5b8f29;
+  --sheep: #fffdf8;        /* 咩咩毛 */
+  --text: #4a3b2c;
+  --muted: #8a7a68;
+  --ok: #5b8f29;
+  --warn: #d9822b;
+  --radius: 22px;
+  --shadow: 0 6px 0 rgba(141, 106, 69, 0.25), 0 10px 24px rgba(74, 59, 44, 0.12);
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  min-height: 100vh;
+  font-family: "jf open 粉圓", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 10%, #fff 0 6%, transparent 7%),
+    radial-gradient(circle at 80% 30%, #fff 0 4%, transparent 5%),
+    var(--cream);
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.nest {
+  width: 100%;
+  max-width: 420px;
+}
+
+.card {
+  background: var(--sheep);
+  border: 4px solid var(--wood);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+h1 {
+  margin: 16px 0 4px;
+  font-size: 1.8rem;
+  color: var(--frog-dark);
+  letter-spacing: 2px;
+}
+
+.subtitle { margin: 0 0 20px; color: var(--muted); }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #f3ecdf;
+  border: 2px dashed var(--wood);
+  font-weight: 600;
+}
+
+.status.ok { background: #eaf6dc; border-color: var(--frog); color: var(--ok); }
+.status.fail { background: #fdeedd; border-color: var(--warn); color: var(--warn); }
+
+.hint { margin-top: 16px; font-size: 0.9rem; color: var(--muted); }

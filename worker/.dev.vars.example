@@ -1,0 +1,21 @@
+# 本機測試用的密碼「範本」：只有欄位名稱，沒有真正的值。
+# 使用方式：複製一份並改名為 .dev.vars（此檔已被 .gitignore 排除，不會上傳），再填入值。
+# 正式上線時，這些值一律用「wrangler secret put 名稱」存進 Cloudflare 的密碼保險箱。
+
+# Google 登入（第 4 階段）
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# 後端自己簽發通行證用的隨機密鑰（第 4 階段，由程式產生）
+SESSION_SECRET=
+
+# Gemini（第 6 階段）
+GEMINI_API_KEY=
+
+# 網頁推播 VAPID（第 11 階段，由程式產生）
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+
+# LINE 機器人（第 12 階段）
+LINE_CHANNEL_SECRET=
+LINE_CHANNEL_ACCESS_TOKEN=
