@@ -16,4 +16,10 @@ GEMINI_MODEL = "gemini-3.8-flash"
 # 計算「今天」「昨天」時使用的時區
 APP_TIMEZONE = "Asia/Taipei"
 
-# 資料庫（D1）會在第 3 階段加入
+# 資料庫（D1）：程式裡用 env.DB 存取
+# database_id 只是資料庫的編號，不是密碼；沒有 Cloudflare 帳號權限的人無法使用。
+[[d1_databases]]
+binding = "DB"
+database_name = "guamie-ledger-db"
+database_id = "53c0b987-13c7-4d7a-b4bb-47e710d2c835"
+migrations_dir = "migrations"

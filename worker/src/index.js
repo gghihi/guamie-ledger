@@ -17,13 +17,25 @@ function json(request, env, data, status = 200) {
 
 // 路由表：「方法 路徑」對應到處理函式
 const routes = {
-  'GET /api/health': (request, env) =>
-    json(request, env, {
+  'GET /api/health': async (request, env) => {
+    // 順便確認資料庫連得上（只數資料表數量，不讀任何帳目內容）
+    let database = false;
+    try {
+      const row = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users','ledgers','loans')",
+      ).first();
+      database = row?.n === 3;
+    } catch (err) {
+      console.error('資料庫檢查失敗', err);
+    }
+    return json(request, env, {
       ok: true,
+      database,
       app: '呱咩小窩帳',
-      message: '呱呱～咩咩～後端運作正常！',
+      message: database ? '呱呱～咩咩～後端與資料庫都正常！' : '後端正常，但資料庫還沒準備好',
       time: new Date().toISOString(),
-    }),
+    });
+  },
 };
 
 export default {
