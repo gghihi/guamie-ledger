@@ -29,6 +29,8 @@ export async function loadLedgerContext(env, user) {
 const parseCtx = (env, lc) => ({ timeZone: env.APP_TIMEZONE || 'Asia/Taipei', me: lc.me, partner: lc.partner });
 
 /** POST /api/parse：把一句話解析成欄位，並告訴前端還缺什麼 */
+export { parseCtx };
+
 export async function parseText(request, env) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
@@ -64,9 +66,16 @@ export async function createLoan(request, env) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
   const body = await readJson(request);
+  const parseSource = ['gemini', 'rules', 'manual'].includes(body.parseSource) ? body.parseSource : 'manual';
+  const inputChannel = ['web', 'voice'].includes(body.inputChannel) ? body.inputChannel : 'web';
+  const loan = await createLoanCore(env, user, lc, body, parseSource, inputChannel);
+  return json(request, env, { ok: true, loan }, 201);
+}
 
+/** 新增借款的核心邏輯（網頁和 LINE 共用） */
+export async function createLoanCore(env, user, lc, draft, parseSource, inputChannel) {
   // 後端再檢查一次，不相信前端送來的資料
-  const fields = sanitizeDraft(body);
+  const fields = sanitizeDraft(draft);
   const missing = missingFields(fields);
   if (missing.length) {
     throw new HttpError(400, `還有欄位沒填好：${missing.map(fieldName).join('、')}`, 'missing_fields');
@@ -76,8 +85,6 @@ export async function createLoan(request, env) {
 
   const lenderId = fields.direction === 'me_lent' ? user.id : lc.partner.id;
   const borrowerId = fields.direction === 'me_lent' ? lc.partner.id : user.id;
-  const parseSource = ['gemini', 'rules', 'manual'].includes(body.parseSource) ? body.parseSource : 'manual';
-  const inputChannel = ['web', 'voice'].includes(body.inputChannel) ? body.inputChannel : 'web';
   const id = newId();
 
   await env.DB.batch([
@@ -92,7 +99,7 @@ export async function createLoan(request, env) {
   ]);
 
   notify(env, { type: 'new_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
-  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) }, 201);
+  return getLoan(env, lc, id, user.id);
 }
 
 /** GET /api/loans：列出我這本帳的所有借款 */

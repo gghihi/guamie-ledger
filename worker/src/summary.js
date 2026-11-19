@@ -14,6 +14,11 @@ export async function getSummary(request, env) {
   const lc = await loadLedgerContext(env, user);
   const month = new URL(request.url).searchParams.get('month') || '';
   if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new HttpError(400, '月份格式不正確', 'bad_month');
+  return json(request, env, { ok: true, ...(await computeSummary(env, user, lc, month)) });
+}
+
+/** 統整的核心計算（網頁和 LINE 共用） */
+export async function computeSummary(env, user, lc, month = '') {
 
   const binds = month ? [user.id, lc.partner.id, lc.ledgerId, month] : [user.id, lc.partner.id, lc.ledgerId];
 
@@ -36,8 +41,7 @@ export async function getSummary(request, env) {
   const iOwe = totals.i_owe;
   const partnerOwes = totals.partner_owes;
   const diff = partnerOwes - iOwe;
-  return json(request, env, {
-    ok: true,
+  return {
     month: month || null,
     months: monthRows.map((r) => r.m),
     me: { name: lc.me.nickname, owes: iOwe },
@@ -50,5 +54,5 @@ export async function getSummary(request, env) {
         : { from: lc.me.nickname, to: lc.partner.nickname, amount: -diff, toMe: false },
     count: totals.count,
     repayPendingCount: totals.repay_pending,
-  });
+  };
 }

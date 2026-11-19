@@ -8,6 +8,7 @@ import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
 import { registerServiceWorker, mountPushToggle } from './pushui.js';
+import { mountLineBinding } from './lineui.js';
 
 const app = document.getElementById('app');
 let state = { me: null };
@@ -127,7 +128,8 @@ function renderHome() {
     <div id="summary"></div>
     <div id="recorder"></div>
     <div id="loan-list"></div>
-    <div id="push-toggle"></div>`;
+    <div id="push-toggle"></div>
+    <div id="line-binding"></div>`;
   bindUserBar();
 
   if (together) {
@@ -137,6 +139,7 @@ function renderHome() {
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
     mountPushToggle(document.getElementById('push-toggle'));
+    mountLineBinding(document.getElementById('line-binding'));
   }
 
   document.getElementById('edit-nick')?.addEventListener('click', async (e) => {

@@ -8,6 +8,7 @@ import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
 import { geminiTransport } from './parse/gemini.js';
 import { subscribePush, unsubscribePush, testPush } from './push.js';
+import { lineWebhook, createBindCode, lineStatus, unbindLine } from './line.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
   requestRepay, confirmRepay, cancelRepay, declineRepay,
@@ -80,6 +81,12 @@ const routes = {
   'POST /api/push/subscribe': subscribePush,
   'POST /api/push/unsubscribe': unsubscribePush,
   'POST /api/push/test': testPush,
+
+  // LINE 機器人
+  'POST /api/line/webhook': lineWebhook,
+  'POST /api/line/bind-code': createBindCode,
+  'GET /api/line/status': lineStatus,
+  'DELETE /api/line/binding': unbindLine,
 };
 
 // 帶有編號的路由，例如 /api/loans/1234/approve

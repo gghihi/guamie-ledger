@@ -365,3 +365,6 @@ input:focus { border-color: var(--frog); }
 .mic:disabled { opacity: 0.6; }
 @keyframes pulse { 50% { filter: brightness(1.15); } }
 .steps { padding-left: 22px; line-height: 1.8; }
+
+/* ───── 第 12 階段：LINE 綁定 ───── */
+.link-btn { display: block; text-align: center; text-decoration: none; box-sizing: border-box; }

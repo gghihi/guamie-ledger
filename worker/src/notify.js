@@ -1,7 +1,8 @@
-// 統一發送通知（第 11 階段：網頁推播；第 12 階段會加上 LINE）
+// 統一發送通知（第 11 階段：網頁推播；第 12 階段：LINE）
 // 通知在背景送出（waitUntil），不會讓按鈕等待；送不出去也不影響記帳本身。
 
 import { pushToUser } from './push.js';
+import { notifyLine } from './lineApi.js';
 
 /**
  * 通知種類：
@@ -44,8 +45,11 @@ export function notify(env, { type, toUserId, loanId, actorId, note = null }) {
     try {
       const message = await buildMessage(env, { type, loanId, actorId, note });
       if (!message) return;
-      await pushToUser(env, toUserId, message);
-      // 第 12 階段：這裡會再加上 LINE 推播
+      // 網頁推播與 LINE 同時送出，確保送達（LINE 超過每月免費額度時自動略過）
+      await Promise.all([
+        pushToUser(env, toUserId, message),
+        notifyLine(env, { toUserId, type, loanId, body: message.body }),
+      ]);
     } catch (err) {
       console.warn('通知失敗', type, err?.message);
     }

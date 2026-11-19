@@ -27,6 +27,9 @@ GOOGLE_CLIENT_ID = "524821288754-eohili8cnos8vb5ukq6msg8k7rbi942j.apps.googleuse
 GEMINI_MODEL = "gemini-3.8-flash"
 # 主要模型忙碌或出錯時改用的備用模型（使用者 2026-11-19 同意加入）。不需要時留空字串即可。
 GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite"
+# LINE 每月主動通知上限（免費方案約 200 則，保留一些緩衝；超過就停發 LINE 通知、改靠網頁推播）
+# 實際免費則數請以 LINE 官網為準
+LINE_MONTHLY_PUSH_LIMIT = "180"
 # 計算「今天」「昨天」時使用的時區
 APP_TIMEZONE = "Asia/Taipei"
 

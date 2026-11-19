@@ -268,6 +268,79 @@ const nb = await newLoan('B', { item: '通知測試' });
 const na = await call('A', 'POST', `/api/loans/${nb}/approve`);
 check('有通知流程時，記帳與同意照常成功', Boolean(nb) && na.status === 200, na.data);
 
+// ───── 第 12 階段：LINE 機器人（本機用假的 LINE 鑰匙，回覆不會真的送出） ─────
+const { createHmac } = await import('node:crypto');
+const LINE_SECRET = 'local-test-line-secret';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function lineSend(events, { badSig = false } = {}) {
+  const body = JSON.stringify({ destination: 'x', events });
+  const sig = badSig ? 'AAAA' : createHmac('sha256', LINE_SECRET).update(body).digest('base64');
+  const res = await fetch(BASE + '/api/line/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': sig }, body });
+  await sleep(1500); // 等背景處理完成
+  return res;
+}
+const lineText = (uid, t) => ({ type: 'message', replyToken: 'r', source: { type: 'user', userId: uid }, message: { type: 'text', id: '1', text: t } });
+const linePost = (uid, data) => ({ type: 'postback', replyToken: 'r', source: { type: 'user', userId: uid }, postback: { data } });
+const LA = 'Utestlineaaaaaaaaaaaaaaaaaaaaaaaa';
+const LB = 'Utestlinebbbbbbbbbbbbbbbbbbbbbbbb';
+
+const lw0 = await lineSend([], { badSig: true });
+check('LINE：簽章不對（不是 LINE 送來的）→ 拒絕', lw0.status === 401);
+const lw1 = await lineSend([]);
+check('LINE：簽章正確 → 收下（LINE 後台「驗證」按鈕會用到）', lw1.status === 200);
+
+const ls0 = await call('A', 'GET', '/api/line/status');
+check('LINE：一開始還沒綁定', ls0.status === 200 && ls0.data.bound === false && ls0.data.configured === true, ls0.data);
+
+await lineSend([lineText(LA, '晚餐 350')]);
+const noBindDraft = (await call('A', 'GET', '/api/loans')).data.loans.length;
+
+const bc = await call('A', 'POST', '/api/line/bind-code');
+check('LINE：網頁版取得 6 位數綁定碼', /^[0-9]{6}$/.test(bc.data.code || ''), bc.data);
+await lineSend([lineText(LA, '綁定 000000')]);
+check('LINE：錯的綁定碼不會綁定', (await call('A', 'GET', '/api/line/status')).data.bound === false);
+await lineSend([lineText(LA, `綁定 ${bc.data.code}`)]);
+check('LINE：傳「綁定 123456」→ 綁定成功', (await call('A', 'GET', '/api/line/status')).data.bound === true);
+await lineSend([lineText(LB, `綁定 ${bc.data.code}`)]);
+check('LINE：綁定碼只能用一次', (await call('B', 'GET', '/api/line/status')).data.bound === false);
+
+const before = (await call('A', 'GET', '/api/loans')).data.loans.length;
+check('LINE：沒綁定時傳記帳句子，不會記到任何帳', noBindDraft === before - 0);
+await lineSend([lineText(LA, '今天幫咩咩寶付晚餐 350')]);
+await lineSend([linePost(LA, 'a=confirm')]);
+const afterLine = (await call('A', 'GET', '/api/loans')).data.loans;
+const lineLoan = afterLine.find((l) => l.item === '晚餐' && l.amount === 350 && l.inputChannel === 'line');
+check('LINE：說一句話 → 按「確認送出」→ 網頁版待確認區出現這筆', afterLine.length === before + 1 && lineLoan?.status === 'pending' && lineLoan?.borrower.name === '咩咩寶', lineLoan);
+
+await lineSend([lineText(LA, '計程車 200')]);
+await lineSend([linePost(LA, 'a=dir&v=partner_lent')]);
+await lineSend([linePost(LA, 'a=date&v=' + today)]);
+await lineSend([linePost(LA, 'a=confirm')]);
+const taxi = (await call('A', 'GET', '/api/loans')).data.loans.find((l) => l.item === '計程車' && l.inputChannel === 'line');
+check('LINE：缺欄位時用按鈕補「誰欠誰」「日期」後送出', taxi?.amount === 200 && taxi?.borrower.isMe === true && taxi?.date === today, taxi);
+
+await lineSend([lineText(LA, '早餐 80')]);
+await lineSend([lineText(LA, '取消')]);
+await lineSend([linePost(LA, 'a=confirm')]);
+check('LINE：傳「取消」後，這筆不會被送出', !(await call('A', 'GET', '/api/loans')).data.loans.some((l) => l.item === '早餐'));
+
+// B 綁定後，在 LINE 同意 A 記的帳
+const bcB = await call('B', 'POST', '/api/line/bind-code');
+await lineSend([lineText(LB, `綁定 ${bcB.data.code}`)]);
+await lineSend([linePost(LB, `a=ask_approve&id=${lineLoan.id}`)]);
+const stillPending = (await call('B', 'GET', '/api/loans')).data.loans.find((l) => l.id === lineLoan.id).status;
+await lineSend([linePost(LB, `a=approve&id=${lineLoan.id}`)]);
+const approvedLine = (await call('B', 'GET', '/api/loans')).data.loans.find((l) => l.id === lineLoan.id).status;
+check('LINE：按「同意」會先問一次（確認畫面），按「確定同意」才真的同意', stillPending === 'pending' && approvedLine === 'unpaid', [stillPending, approvedLine]);
+
+await lineSend([linePost(LA, `a=approve&id=${taxi.id}`)]);
+check('LINE：自己記的帳不能在 LINE 自己同意', (await call('A', 'GET', '/api/loans')).data.loans.find((l) => l.id === taxi.id).status === 'pending');
+await lineSend([linePost(LB, `a=reject&id=${taxi.id}`)]);
+check('LINE：對方在 LINE 否定 → 變成「被否定」', (await call('A', 'GET', '/api/loans')).data.loans.find((l) => l.id === taxi.id).status === 'rejected');
+
+const ub = await call('A', 'DELETE', '/api/line/binding');
+check('LINE：網頁版解除綁定', ub.status === 200 && (await call('A', 'GET', '/api/line/status')).data.bound === false);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

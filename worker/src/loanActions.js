@@ -42,6 +42,11 @@ function stateError(row, expected) {
 export async function approveLoan(request, env, { id }) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
+  return json(request, env, { ok: true, loan: await approveCore(env, user, lc, id) });
+}
+
+/** 同意的核心邏輯（網頁和 LINE 共用） */
+export async function approveCore(env, user, lc, id) {
   const row = await loadLoanRow(env, lc, id);
   if (row.created_by === user.id) throw new HttpError(403, '自己記的帳要由對方同意喔', 'not_allowed');
   if (row.status !== 'pending') throw stateError(row, '同意');
@@ -52,7 +57,7 @@ export async function approveLoan(request, env, { id }) {
   ).bind(now, now, id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '同意');
   await logEvent(env, row, user.id, 'approve', 'pending', 'unpaid').run();
-  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+  return getLoan(env, lc, id, user.id);
 }
 
 /** POST /api/loans/approve-all：一次同意所有「對方記的、待確認」的帳 */
@@ -84,6 +89,11 @@ export async function rejectLoan(request, env, { id }) {
   const lc = await loadLedgerContext(env, user);
   const body = await readJson(request).catch(() => ({}));
   const reason = cleanText(body.reason, 100) || null;
+  return json(request, env, { ok: true, loan: await rejectCore(env, user, lc, id, reason) });
+}
+
+/** 否定的核心邏輯（網頁和 LINE 共用） */
+export async function rejectCore(env, user, lc, id, reason = null) {
   const row = await loadLoanRow(env, lc, id);
   if (row.created_by === user.id) throw new HttpError(403, '自己記的帳不能否定，可以用「撤回」', 'not_allowed');
   if (row.status !== 'pending') throw stateError(row, '否定');
@@ -94,7 +104,7 @@ export async function rejectLoan(request, env, { id }) {
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '否定');
   await logEvent(env, row, user.id, 'reject', 'pending', 'rejected', reason).run();
   notify(env, { type: 'rejected', toUserId: row.created_by, loanId: id, actorId: user.id, note: reason });
-  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+  return getLoan(env, lc, id, user.id);
 }
 
 /** POST /api/loans/:id/withdraw：對方同意前，記帳的人撤回（直接移除） */
