@@ -55,7 +55,13 @@ function systemPrompt(ctx) {
  * 呼叫 Gemini。input 可以是 { text } 或 { audio: { mimeType, base64 } }（第 10 階段語音用）。
  * 回傳 { amount, direction, item, date, isLoan, transcript }（已檢查過格式）。
  */
-export async function parseWithGemini(input, ctx, env, fetchImpl = fetch) {
+/** 金鑰前後若混入看不見的字元（例如 Windows 的檔案開頭標記 BOM、空白、換行），一律去掉 */
+export function cleanApiKey(raw) {
+  return String(raw ?? '').replace(/^﻿/, '').replace(/[^\x21-\x7E]/g, '');
+}
+
+export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch) {
+  const env = { ...rawEnv, GEMINI_API_KEY: cleanApiKey(rawEnv.GEMINI_API_KEY) };
   if (!env.GEMINI_API_KEY) throw new GeminiError('no_key');
   if (!env.GEMINI_MODEL) throw new GeminiError('no_model');
 

@@ -140,6 +140,12 @@ test('語音：Gemini 無法使用時，請使用者改用打字（規則解析�
   assert.equal(r.fields.amount, null);
 });
 
+test('金鑰前面有看不見的字元（BOM）或換行 → 自動去掉再送出', async () => {
+  const fake = fakeGemini({ isLoan: true, amount: 1, direction: 'me_lent', item: 'x', date: today });
+  await analyze('test', null, ctx, { ...env, GEMINI_API_KEY: '﻿fake-key\r\n' }, fake);
+  assert.equal(fake.calls[0].init.headers['x-goog-api-key'], 'fake-key');
+});
+
 test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清掉', () => {
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });
