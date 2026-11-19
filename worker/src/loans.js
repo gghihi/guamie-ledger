@@ -109,6 +109,8 @@ function toLoan(r, meId) {
     createdByMe: r.created_by === meId,
     creatorName: r.creator_name,
     rejectReason: r.reject_reason,
+    repayRequestedByMe: r.repay_requested_by ? r.repay_requested_by === meId : null,
+    paidAt: r.paid_at,
     parseSource: r.parse_source,
     inputChannel: r.input_channel,
     createdAt: r.created_at,

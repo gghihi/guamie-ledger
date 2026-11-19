@@ -154,6 +154,36 @@ const x1 = await call('C', 'POST', `/api/loans/${mine}/approve`);
 const x2 = await call('C', 'GET', `/api/loans/${loanId}/events`);
 check('別的小窩不能操作或查看這本帳的紀錄', x1.status !== 200 && x2.status !== 200, [x1.status, x2.status]);
 
+// ───── 第 8 階段：還款與雙方確認 ─────
+// loanId 目前是「未還」（呱呱欠咩咩寶 400）
+const pr0 = await call('A', 'POST', `/api/loans/${mine}/repay`);
+check('待確認的帳不能標記還款', pr0.status === 409, pr0.data);
+
+const pr1 = await call('A', 'POST', `/api/loans/${loanId}/repay`);
+check('A 標記已還款 → 變成「已還待確認」', pr1.status === 200 && pr1.data.loan.status === 'repay_pending' && pr1.data.loan.repayRequestedByMe === true, pr1.data);
+
+const pr2 = await call('A', 'POST', `/api/loans/${loanId}/confirm-repay`);
+check('自己標記的還款不能自己確認', pr2.status === 403, pr2.data);
+
+const pr3 = await call('A', 'POST', `/api/loans/${loanId}/repay`);
+check('已還待確認時不能重複標記', pr3.status === 409, pr3.data);
+
+const pr4 = await call('A', 'DELETE', `/api/loans/${loanId}`);
+check('還沒確認還款前不能刪除', pr4.status === 409, pr4.data);
+
+const pr5 = await call('B', 'POST', `/api/loans/${loanId}/confirm-repay`);
+check('B 確認 → 變成「已還」', pr5.status === 200 && pr5.data.loan.status === 'paid' && pr5.data.loan.paidAt, pr5.data);
+
+const evR = await call('A', 'GET', `/api/loans/${loanId}/events`);
+check('狀態紀錄多了「標記還款」「確認還款」', evR.data.events.map((e) => e.action).slice(-2).join(',') === 'request_repay,confirm_repay', evR.data);
+
+const pr6 = await call('C', 'DELETE', `/api/loans/${loanId}`);
+check('別的小窩不能刪除', pr6.status !== 200, pr6.status);
+
+const pr7 = await call('A', 'DELETE', `/api/loans/${loanId}`);
+const afterDel = await call('B', 'GET', '/api/loans');
+check('已還的紀錄任一方都能刪除（A 刪 B 記的）', pr7.status === 200 && !afterDel.data.loans.some((l) => l.id === loanId), pr7.data);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

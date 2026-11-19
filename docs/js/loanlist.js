@@ -28,7 +28,8 @@ export function mountLoanList(container, ctx) {
     switch (l.status) {
       case 'pending': return l.createdByMe ? '<span class="tag wait">等對方確認</span>' : '<span class="tag todo">等你確認</span>';
       case 'rejected': return '<span class="tag no">被否定</span>';
-      case 'repay_pending': return '<span class="tag wait">已還待確認</span>';
+      case 'repay_pending': return l.repayRequestedByMe ? '<span class="tag wait">已還待確認</span>' : '<span class="tag todo">請確認還款</span>';
+      case 'paid': return '<span class="tag">已還</span>';
       default: return '';
     }
   }
@@ -47,6 +48,16 @@ export function mountLoanList(container, ctx) {
               <button class="btn tiny ghost danger" data-act="delete" data-id="${l.id}">刪除</button>`;
     }
     if (l.status === 'rejected') return `<small class="hint">已否定，等${esc(partner)}處理</small>`;
+    if (l.status === 'unpaid') {
+      return `<button class="btn tiny" data-act="repay" data-id="${l.id}">已還款</button>`;
+    }
+    if (l.status === 'repay_pending' && !l.repayRequestedByMe) {
+      return `<button class="btn tiny" data-act="confirm-repay" data-id="${l.id}">確認已還</button>`;
+    }
+    if (l.status === 'repay_pending') return `<small class="hint">已標記還款，等${esc(partner)}確認</small>`;
+    if (l.status === 'paid') {
+      return `<button class="btn tiny ghost danger" data-act="delete" data-id="${l.id}">刪除</button>`;
+    }
     return '';
   }
 
@@ -96,7 +107,10 @@ export function mountLoanList(container, ctx) {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const loan = loans.find((l) => l.id === btn.dataset.id);
-    const handlers = { approve, reject, withdraw, edit, delete: remove, detail, 'approve-all': approveAll };
+    const handlers = {
+      approve, reject, withdraw, edit, delete: remove, detail, 'approve-all': approveAll,
+      repay, 'confirm-repay': confirmRepay,
+    };
     await handlers[btn.dataset.act]?.(loan, btn);
   });
 
@@ -151,6 +165,34 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}/withdraw`, { method: 'POST' });
       toast('已撤回', 'ok');
+      await refresh();
+    });
+  }
+
+  async function repay(l, btn) {
+    const ok = await confirmDialog({
+      title: '這筆已經還了嗎？',
+      message: `${describe(l)}\n\n標記後要等${partner}確認，才會移到「已還」。`,
+      okText: '已還款',
+    });
+    if (!ok) return;
+    await withBusy(btn, async () => {
+      await api(`/api/loans/${l.id}/repay`, { method: 'POST' });
+      toast(`已標記，等${partner}確認`, 'ok');
+      await refresh();
+    });
+  }
+
+  async function confirmRepay(l, btn) {
+    const ok = await confirmDialog({
+      title: '確認已經還清了嗎？',
+      message: `${describe(l)}\n\n確認後會移到「已還」，不再算進統整。`,
+      okText: '確認已還',
+    });
+    if (!ok) return;
+    await withBusy(btn, async () => {
+      await api(`/api/loans/${l.id}/confirm-repay`, { method: 'POST' });
+      toast('還款完成 🎉', 'ok');
       await refresh();
     });
   }

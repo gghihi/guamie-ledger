@@ -5,7 +5,10 @@ import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
 import { parseText, createLoan, listLoans } from './loans.js';
-import { approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents } from './loanActions.js';
+import {
+  approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
+  requestRepay, confirmRepay,
+} from './loanActions.js';
 
 async function health(request, env) {
   // 順便確認資料庫連得上（只數資料表數量，不讀任何帳目內容）
@@ -61,6 +64,8 @@ const paramRoutes = [
   ['PUT', new RegExp(`^/api/loans/${ID}$`), resubmitLoan],
   ['DELETE', new RegExp(`^/api/loans/${ID}$`), deleteLoan],
   ['GET', new RegExp(`^/api/loans/${ID}/events$`), loanEvents],
+  ['POST', new RegExp(`^/api/loans/${ID}/repay$`), requestRepay],
+  ['POST', new RegExp(`^/api/loans/${ID}/confirm-repay$`), confirmRepay],
 ];
 
 function findRoute(method, pathname) {

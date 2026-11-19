@@ -141,16 +141,52 @@ export async function resubmitLoan(request, env, { id }) {
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
+// ───────── 第 8 階段：還款 ─────────
+
+/** POST /api/loans/:id/repay：任一方標記「已還款」→ 已還待確認，並通知另一方 */
+export async function requestRepay(request, env, { id }) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const row = await loadLoanRow(env, lc, id);
+  if (row.status !== 'unpaid') throw stateError(row, '標記還款');
+
+  const res = await env.DB.prepare(
+    "UPDATE loans SET status = 'repay_pending', repay_requested_by = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'unpaid'",
+  ).bind(user.id, nowIso(), id, lc.ledgerId).run();
+  if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '標記還款');
+  await logEvent(env, row, user.id, 'request_repay', 'unpaid', 'repay_pending').run();
+  await notify(env, { type: 'repay_pending', toUserId: lc.partner.id, loan: row });
+  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+}
+
+/** POST /api/loans/:id/confirm-repay：另一方確認 → 已還，並通知標記的人 */
+export async function confirmRepay(request, env, { id }) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const row = await loadLoanRow(env, lc, id);
+  if (row.status !== 'repay_pending') throw stateError(row, '確認還款');
+  if (row.repay_requested_by === user.id) throw new HttpError(403, '自己標記的還款要由對方確認喔', 'not_allowed');
+
+  const now = nowIso();
+  const res = await env.DB.prepare(
+    "UPDATE loans SET status = 'paid', paid_at = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by <> ?",
+  ).bind(now, now, id, lc.ledgerId, user.id).run();
+  if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '確認還款');
+  await logEvent(env, row, user.id, 'confirm_repay', 'repay_pending', 'paid').run();
+  await notify(env, { type: 'repay_confirmed', toUserId: row.repay_requested_by, loan: row });
+  return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
+}
+
 /**
  * DELETE /api/loans/:id：刪除紀錄
  *  被否定 rejected：記帳的人可以刪除
- *  （第 8 階段會加入：已還 paid 的紀錄任一方可刪除）
+ *  已還 paid：任一方都可以刪除
  */
 export async function deleteLoan(request, env, { id }) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
   const row = await loadLoanRow(env, lc, id);
-  const allowed = row.status === 'rejected' && row.created_by === user.id;
+  const allowed = (row.status === 'rejected' && row.created_by === user.id) || row.status === 'paid';
   if (!allowed) {
     if (row.status === 'rejected') throw new HttpError(403, '被否定的紀錄只有記帳的人可以刪除', 'not_allowed');
     throw stateError(row, '刪除');
