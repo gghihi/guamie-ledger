@@ -2,7 +2,7 @@
 // 負責：接收推播並顯示通知、點通知時打開 APP。
 // 不快取帳目資料（避免看到舊的帳），只在沒網路時顯示提示頁。
 
-const VERSION = 'v13-3';
+const VERSION = 'v13-4';
 const OFFLINE_URL = './offline.html';
 
 self.addEventListener('install', (event) => {
@@ -40,7 +40,11 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { body: event.data?.text() };
   }
-  event.waitUntil(
+  // 如果 APP 正開著，請畫面馬上重新抓資料（同步更新）
+  const tellPages = self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((wins) => wins.forEach((w) => w.postMessage({ type: 'refresh' })));
+  event.waitUntil(Promise.all([tellPages,
     self.registration.showNotification(data.title || '呱咩小窩帳', {
       body: data.body || '有新的消息',
       icon: './icons/記帳APP 圖示.png',
@@ -49,7 +53,7 @@ self.addEventListener('push', (event) => {
       renotify: Boolean(data.tag),
       data: { url: data.url || './' },
     }),
-  );
+  ]));
 });
 
 // 點通知 → 打開（或切換到）APP

@@ -11,7 +11,7 @@ import { registerServiceWorker, mountPushToggle } from './pushui.js';
 import { mountLineBinding } from './lineui.js';
 
 const app = document.getElementById('app');
-let state = { me: null };
+let state = { me: null, list: null, memberKey: '' };
 
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric' });
@@ -149,9 +149,10 @@ function renderHome() {
     const partner = ledger.members.find((m) => !m.isMe);
     const summary = mountSummary(document.getElementById('summary'));
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
+    state.list = list;
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
   } else {
-    mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
+    state.list = mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
   }
 
   document.getElementById('leave-nest').addEventListener('click', (e) => leaveNest(e.currentTarget, together));
@@ -330,7 +331,35 @@ async function start() {
 
 start();
 
-// 切回 APP 時（例如點通知、從背景回來）自動更新畫面
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.me?.ledger) refresh().catch(() => {});
+// ───────── 同步更新 ─────────
+// 只更新清單與統整（不重畫整頁，正在打的記帳草稿不會不見）；
+// 小窩成員有變動（對方加入或離開）時才重畫整頁。
+const memberKey = (me) => (me?.ledger ? me.ledger.members.map((m) => m.userId + m.nickname).join('|') : '');
+let syncing = false;
+async function syncNow() {
+  if (syncing || !state.me?.ledger || document.visibilityState !== 'visible') return;
+  syncing = true;
+  try {
+    const me = await api('/api/me');
+    if (memberKey(me) !== memberKey(state.me)) {
+      await refresh();
+    } else {
+      await state.list?.refresh({ quiet: true });
+    }
+  } catch {
+    /* 背景同步失敗就等下一次 */
+  } finally {
+    syncing = false;
+  }
+}
+
+// 1. 收到推播時（APP 正開著）立刻更新
+navigator.serviceWorker?.addEventListener('message', (e) => {
+  if (e.data?.type === 'refresh') syncNow();
 });
+// 2. 切回 APP 時更新
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncNow();
+});
+// 3. APP 開在畫面上時，每 20 秒檢查一次（沒開通知的人也能同步）
+setInterval(syncNow, 20000);

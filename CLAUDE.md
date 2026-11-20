@@ -43,6 +43,7 @@ docs/（GitHub Pages）──Bearer token──► worker/（Cloudflare Worker�
 - **網頁和 LINE 共用核心邏輯**：`createLoanCore`、`approveCore`、`rejectCore`、`computeSummary` 給 HTTP handler 和 `line.js` 共用。新增狀態操作時，兩邊都要考慮。
 - **權限模型**：每個 handler 先 `requireUser`（Bearer token → `sessions.token_hash`），再 `loadLedgerContext` / `requireMyLedger`（一人只屬於一本帳、每本帳最多 2 人，有 DB trigger 保護）。所有讀寫 `loans` 的 SQL 都要帶 `ledger_id = ?`。狀態變更一律用條件式 UPDATE（`WHERE status = ? AND ...`），再檢查 `meta.changes`，避免兩人同時操作出錯，並寫一筆 `loan_events`。
 - **借款狀態**：`pending → unpaid → repay_pending → paid`，另有 `rejected`。`repay_pending` 可以 `cancel-repay`（標記的人）或 `decline-repay`（對方）退回 `unpaid`。統整只算 `unpaid` 和 `repay_pending`。撤回或刪除會真的刪掉那筆，歷史留在 `loan_events`。
+- **同步更新**：`app.js` 的 `syncNow()` 只呼叫 `state.list.refresh({ quiet: true })`（資料沒變不重畫、不清掉記帳草稿），成員有變動才整頁重畫；觸發來源是 SW 收到推播時的 `postMessage({type:'refresh'})`、切回 APP、以及畫面可見時每 20 秒。
 - **通知**：`notify.js` 透過 `env.waitUntil` 在背景同時送 Web Push 和 LINE。LINE 主動通知有每月上限（`line_push_usage`、`LINE_MONTHLY_PUSH_LIMIT`），回覆訊息不受限。
 - **Google 登入**：Worker 端用 authorization code 流程，前端產生 nonce 防止別人塞登入；callback 發一次性 `login_codes`，前端再換成 session token 存 localStorage。全程不用 Cookie。
 - **離開小窩**：需先結清；離開者的暱稱存進 `ledger_former_members`，讓查詢顯示名字時可以 COALESCE；最後一人離開時刪除整本帳（cascade）。

@@ -311,17 +311,30 @@ export function mountLoanList(container, ctx) {
     }
   }
 
-  async function refresh() {
+  let lastSnapshot = '';
+
+  /**
+   * 重新抓資料。quiet = true 時是背景同步：抓不到就不顯示錯誤，資料沒變就不重畫。
+   * 回傳資料有沒有改變。
+   */
+  async function refresh({ quiet = false } = {}) {
+    let fresh;
     try {
-      loans = (await api('/api/loans')).loans;
+      fresh = (await api('/api/loans')).loans;
     } catch (err) {
-      container.innerHTML = `<section class="card"><p class="hint">😿 ${esc(err.message)}</p></section>`;
-      return;
+      if (!quiet) container.innerHTML = `<section class="card"><p class="hint">😿 ${esc(err.message)}</p></section>`;
+      return false;
     }
+    const snapshot = JSON.stringify(fresh);
+    const changed = snapshot !== lastSnapshot;
+    lastSnapshot = snapshot;
+    loans = fresh;
+    if (!changed && loaded) return false;
     render();
-    // 第一次載入以外（例如同意、還款後），通知統整卡片更新
+    // 第一次載入以外（例如同意、還款、對方有新動作），通知統整卡片更新
     if (loaded) ctx.onChange?.();
     loaded = true;
+    return changed;
   }
 
   let loaded = false;
