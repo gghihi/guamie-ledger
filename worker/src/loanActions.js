@@ -74,8 +74,8 @@ export async function approveAll(request, env) {
   for (const row of rows) {
     statements.push(
       env.DB.prepare(
-        "UPDATE loans SET status = 'unpaid', approved_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
-      ).bind(now, now, row.id),
+        "UPDATE loans SET status = 'unpaid', approved_at = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'pending'",
+      ).bind(now, now, row.id, lc.ledgerId),
       logEvent(env, row, user.id, 'approve', 'pending', 'unpaid', '全部同意'),
     );
   }
