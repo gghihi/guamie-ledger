@@ -72,7 +72,8 @@ export function mountLoanList(container, ctx) {
         <button class="loan-body" data-act="detail" data-id="${l.id}" aria-label="查看這筆的紀錄">
           <div class="loan-main">
             <strong>${esc(l.item)}</strong>
-            <small>${prettyDate(l.date)}・${esc(l.borrower.name)} 欠 ${esc(l.lender.name)}</small>
+            <small>${prettyDate(l.date)}・${esc(l.borrower.name)} 欠 ${esc(l.lender.name)}<span class="cat-chip">${esc(l.category || '其他')}</span></small>
+            ${l.status === 'paid' ? `<small class="payer">${l.repaidBy ? `💰 ${esc(l.repaidBy.name)} 還款` : '💰 還款人：未指定'}</small>` : ''}
             ${l.status === 'rejected' && l.rejectReason ? `<small class="reason">否定原因：${esc(l.rejectReason)}</small>` : ''}
           </div>
           <div class="loan-side">
@@ -174,18 +175,38 @@ export function mountLoanList(container, ctx) {
     });
   }
 
-  async function repay(l, btn) {
-    const ok = await confirmDialog({
-      title: '這筆已經還了嗎？',
-      message: `${describe(l)}\n\n標記後要等${partner}確認，才會移到「已還」。`,
-      okText: '已還款',
+  /** 已還款：確認畫面裡多一個「誰還的錢？」（歷史紀錄的花費算給他），預設是欠錢的人 */
+  function repay(l) {
+    let repaidBy = l.borrower.id;
+    const { el, close } = openModal(`
+      <h2>這筆已經還了嗎？</h2>
+      <p>${esc(describe(l))}</p>
+      <div class="field">誰還的錢？<small class="hint">（歷史紀錄的花費會算給他）</small>
+        <div class="seg">
+          <button type="button" data-payer="${esc(l.borrower.id)}">${esc(l.borrower.name)}${l.borrower.isMe ? '（我）' : ''}<small>欠錢的人</small></button>
+          <button type="button" data-payer="${esc(l.lender.id)}">${esc(l.lender.name)}${l.lender.isMe ? '（我）' : ''}<small>借出的人自己負擔</small></button>
+        </div>
+      </div>
+      <p class="hint">標記後要等${esc(partner)}確認，才會移到「已還」。</p>
+      <div class="row">
+        <button class="btn ghost" data-close>取消</button>
+        <button class="btn" id="do-repay">已還款</button>
+      </div>`);
+    const paint = () => el.querySelectorAll('[data-payer]').forEach((b) => b.classList.toggle('on', b.dataset.payer === repaidBy));
+    paint();
+    el.querySelectorAll('[data-payer]').forEach((b) => {
+      b.onclick = () => {
+        repaidBy = b.dataset.payer;
+        paint();
+      };
     });
-    if (!ok) return;
-    await withBusy(btn, async () => {
-      await api(`/api/loans/${l.id}/repay`, { method: 'POST' });
-      toast(`已標記，等${partner}確認`, 'ok');
-      await refresh();
-    });
+    el.querySelector('#do-repay').onclick = (e) =>
+      withBusy(e.currentTarget, async () => {
+        await api(`/api/loans/${l.id}/repay`, { method: 'POST', body: { repaidBy } });
+        close();
+        toast(`已標記，等${partner}確認`, 'ok');
+        await refresh();
+      });
   }
 
   async function confirmRepay(l, btn) {

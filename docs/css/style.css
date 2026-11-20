@@ -402,3 +402,57 @@ input:focus { border-color: var(--frog); }
   font-size: 0.85rem;
   box-shadow: 0 5px 0 #9e3f2b;
 }
+
+
+/* ───── 歷史紀錄（H5） ───── */
+.main-tabs { margin: 0; }
+.main-tabs button { font-size: 1rem; }
+.hist-type { margin-top: 10px; }
+.hist-total { font-size: 2rem; font-weight: 900; }
+.hist-total small { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.sum-grid .unspec { grid-column: 1 / -1; background: #fff6f3; border-color: #f0c8bb; }
+.empty-hist { font-size: 1.15rem; font-weight: 700; color: var(--wood-dark); margin: 12px 0 4px; }
+.cat-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.cat-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto auto 44px;
+  grid-template-areas: "dot name count amount pct" ". bar bar bar bar";
+  align-items: center; column-gap: 8px; row-gap: 4px;
+  padding: 8px 2px; border-bottom: 2px dashed var(--sheep-shade);
+}
+.cat-row:last-child { border-bottom: none; }
+.cat-row .dot { grid-area: dot; width: 12px; height: 12px; border-radius: 50%; }
+.cat-row .cat-name { grid-area: name; font-weight: 700; }
+.cat-row .cat-count { grid-area: count; color: var(--muted); font-size: 0.85rem; }
+.cat-row .cat-amount { grid-area: amount; font-weight: 800; }
+.cat-row .cat-pct { grid-area: pct; text-align: right; color: var(--wood-dark); font-weight: 700; }
+.cat-row .bar { grid-area: bar; height: 6px; background: var(--sheep-shade); border-radius: 999px; overflow: hidden; }
+.cat-row .bar i { display: block; height: 100%; border-radius: 999px; }
+.cat-chip { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--sheep-shade); color: var(--wood-dark); font-size: 0.75rem; }
+.loan-main .payer { display: block; color: var(--frog-dark); font-size: 0.8rem; }
+
+/* ───── 歷史紀錄（H6）：圓餅圖、補填、分類規則 ───── */
+.pie-wrap { display: flex; justify-content: center; margin: 8px 0 4px; }
+.pie { width: 210px; height: 210px; }
+.pie .slice { cursor: pointer; transition: transform 0.15s, opacity 0.15s; transform-origin: 100px 100px; }
+.pie:has(.slice.on) .slice:not(.on) { opacity: 0.45; }
+.pie .slice.on { transform: scale(1.05); }
+.pie-detail { text-align: center; margin: 6px 0 10px; min-height: 1.5em; }
+.pie-detail.on { font-size: 1.05rem; }
+.pie-detail .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.cat-row { cursor: pointer; border-radius: 10px; }
+.cat-row.on { background: #fff6dc; }
+.rules-btn { margin: 0; }
+.rules-modal { max-width: 440px; }
+.rule-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.rule-card { background: #fff; border: 2px solid var(--sheep-shade); border-radius: 14px; padding: 8px; }
+.rule-card.other { background: var(--sheep-shade); }
+.rule-head { display: flex; align-items: center; gap: 6px; }
+.rule-head .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.rule-head .rule-name { flex: 1; margin: 0; padding: 6px 10px; font-weight: 700; }
+.rule-head .btn.tiny { padding: 4px 8px; }
+.rule-kw {
+  display: block; width: 100%; margin-top: 6px; padding: 8px 10px; font: inherit; font-size: 0.95rem;
+  border: 2px solid var(--sheep-shade); border-radius: 10px; resize: vertical; color: var(--text);
+}
+.rule-kw:focus, .rule-head .rule-name:focus { border-color: var(--frog); outline: none; }

@@ -7,11 +7,12 @@ import { esc, toast, confirmDialog, withBusy, openModal } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
+import { mountHistory } from './history.js';
 import { registerServiceWorker, mountPushToggle } from './pushui.js';
 import { mountLineBinding } from './lineui.js';
 
 const app = document.getElementById('app');
-let state = { me: null, list: null, memberKey: '' };
+let state = { me: null, list: null, memberKey: '', view: 'home' };
 
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric' });
@@ -132,17 +133,39 @@ function renderHome() {
 
   app.innerHTML = `
     ${userBar()}
-    <details class="card nest-info" ${together ? '' : 'open'}>
-      <summary><h2>🏡 ${esc(ledger.name)}</h2><span class="hint">${together ? '兩個人都到齊了' : '等另一半加入中…'}</span></summary>
-      <ul class="members">${members}</ul>
-      <button class="btn ghost danger leave-btn" id="leave-nest">🚪 離開小窩</button>
-    </details>
-    ${inviteBlock}
-    <div id="summary"></div>
-    <div id="recorder"></div>
-    <div id="loan-list"></div>
+    <nav class="seg main-tabs" role="tablist">
+      <button type="button" role="tab" data-view="home" class="${state.view === 'history' ? '' : 'on'}">🏠 小窩</button>
+      <button type="button" role="tab" data-view="history" class="${state.view === 'history' ? 'on' : ''}">📊 歷史</button>
+    </nav>
+    <div id="home-view" ${state.view === 'history' ? 'hidden' : ''}>
+      <details class="card nest-info" ${together ? '' : 'open'}>
+        <summary><h2>🏡 ${esc(ledger.name)}</h2><span class="hint">${together ? '兩個人都到齊了' : '等另一半加入中…'}</span></summary>
+        <ul class="members">${members}</ul>
+        <button class="btn ghost danger leave-btn" id="leave-nest">🚪 離開小窩</button>
+      </details>
+      ${inviteBlock}
+      <div id="summary"></div>
+      <div id="recorder"></div>
+      <div id="loan-list"></div>
+    </div>
+    <div id="history-view" ${state.view === 'history' ? '' : 'hidden'}></div>
 `;
   bindUserBar();
+
+  // 「🏠 小窩／📊 歷史」切換；歷史頁每次切過去都重新抓資料
+  const histView = mountHistory(document.getElementById('history-view'));
+  const showView = (view) => {
+    state.view = view;
+    app.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
+    document.getElementById('home-view').hidden = view !== 'home';
+    document.getElementById('history-view').hidden = view !== 'history';
+    if (view === 'history') histView.refresh();
+    window.scrollTo({ top: 0 });
+  };
+  app.querySelectorAll('[data-view]').forEach((b) => {
+    b.onclick = () => showView(b.dataset.view);
+  });
+  if (state.view === 'history') histView.refresh();
 
   if (together) {
     const me = ledger.members.find((m) => m.isMe);
