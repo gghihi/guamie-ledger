@@ -4,6 +4,7 @@
 import { requireUser } from './auth.js';
 import { HttpError, json, readJson, nowIso, isoAfter, DAY, newId, readableCode, cleanText } from './util.js';
 import { pushToUser } from './push.js';
+import { seedStatements } from './categories.js';
 import { notifyLine } from './lineApi.js';
 
 const INVITE_DAYS = 7;
@@ -140,6 +141,8 @@ export async function createLedger(request, env) {
       .bind(ledgerId, cleanText(body.name, 20) || '呱咩小窩', user.id),
     env.DB.prepare("INSERT INTO ledger_members (ledger_id, user_id, role, nickname) VALUES (?, ?, 'owner', ?)")
       .bind(ledgerId, user.id, cleanNickname(body.nickname, user.displayName)),
+    // 新小窩的初始分類規則（歷史紀錄用）
+    ...seedStatements(env, ledgerId),
   ]);
   await createInvite(env, ledgerId, user.id);
   return json(request, env, { ok: true, ledger: await loadLedger(env, ledgerId, user.id) }, 201);
