@@ -7,6 +7,7 @@ import { analyze, missingFields, sanitizeDraft, FIELDS } from './parse/index.js'
 import { todayIn } from './parse/dates.js';
 import { HttpError, json, readJson, newId, cleanText } from './util.js';
 import { notify } from './notify.js';
+import { classifyForLedger } from './categories.js';
 
 /**
  * 取得「我、對方、帳本」的資料。記帳一定要兩個人都在小窩裡。
@@ -86,12 +87,14 @@ export async function createLoanCore(env, user, lc, draft, parseSource, inputCha
   const lenderId = fields.direction === 'me_lent' ? user.id : lc.partner.id;
   const borrowerId = fields.direction === 'me_lent' ? lc.partner.id : user.id;
   const id = newId();
+  // 依這本帳目前的規則自動分類；之後改規則不會改動這筆（除非使用者要求重新分類）
+  const category = await classifyForLedger(env, lc.ledgerId, fields.item);
 
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO loans (id, ledger_id, lender_id, borrower_id, amount, item, loan_date, created_by, parse_source, input_channel)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, lc.ledgerId, lenderId, borrowerId, fields.amount, fields.item, fields.date, user.id, parseSource, inputChannel),
+      `INSERT INTO loans (id, ledger_id, lender_id, borrower_id, amount, item, loan_date, created_by, parse_source, input_channel, category)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, lc.ledgerId, lenderId, borrowerId, fields.amount, fields.item, fields.date, user.id, parseSource, inputChannel, category),
     env.DB.prepare(
       `INSERT INTO loan_events (loan_id, ledger_id, actor_id, action, from_status, to_status, snapshot)
        VALUES (?, ?, ?, 'create', NULL, 'pending', ?)`,
@@ -116,15 +119,18 @@ const LOAN_SELECT = `
   SELECT l.*,
          COALESCE(ml.nickname, fl.nickname, '已離開的成員') AS lender_name,
          COALESCE(mb.nickname, fb.nickname, '已離開的成員') AS borrower_name,
-         COALESCE(mc.nickname, fc.nickname, '已離開的成員') AS creator_name
+         COALESCE(mc.nickname, fc.nickname, '已離開的成員') AS creator_name,
+         COALESCE(mr.nickname, fr.nickname, '已離開的成員') AS repaid_by_name
     FROM loans l
     LEFT JOIN ledger_members ml ON ml.ledger_id = l.ledger_id AND ml.user_id = l.lender_id
     LEFT JOIN ledger_members mb ON mb.ledger_id = l.ledger_id AND mb.user_id = l.borrower_id
     LEFT JOIN ledger_members mc ON mc.ledger_id = l.ledger_id AND mc.user_id = l.created_by
+    LEFT JOIN ledger_members mr ON mr.ledger_id = l.ledger_id AND mr.user_id = l.repaid_by
     -- 已離開的成員：用離開時記下的暱稱
     LEFT JOIN ledger_former_members fl ON fl.ledger_id = l.ledger_id AND fl.user_id = l.lender_id
     LEFT JOIN ledger_former_members fb ON fb.ledger_id = l.ledger_id AND fb.user_id = l.borrower_id
-    LEFT JOIN ledger_former_members fc ON fc.ledger_id = l.ledger_id AND fc.user_id = l.created_by`;
+    LEFT JOIN ledger_former_members fc ON fc.ledger_id = l.ledger_id AND fc.user_id = l.created_by
+    LEFT JOIN ledger_former_members fr ON fr.ledger_id = l.ledger_id AND fr.user_id = l.repaid_by`;
 
 export async function getLoan(env, lc, id, meId) {
   const row = await env.DB.prepare(`${LOAN_SELECT} WHERE l.id = ? AND l.ledger_id = ?`).bind(id, lc.ledgerId).first();
@@ -144,6 +150,9 @@ function toLoan(r, meId) {
     creatorName: r.creator_name,
     rejectReason: r.reject_reason,
     repayRequestedByMe: r.repay_requested_by ? r.repay_requested_by === meId : null,
+    // 實際還款人（歷史紀錄用）；null ＝ 未指定
+    repaidBy: r.repaid_by ? { id: r.repaid_by, name: r.repaid_by_name, isMe: r.repaid_by === meId } : null,
+    category: r.category || '其他',
     paidAt: r.paid_at,
     parseSource: r.parse_source,
     inputChannel: r.input_channel,

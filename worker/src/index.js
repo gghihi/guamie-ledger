@@ -11,7 +11,7 @@ import { subscribePush, unsubscribePush, testPush } from './push.js';
 import { lineWebhook, createBindCode, lineStatus, unbindLine } from './line.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
-  requestRepay, confirmRepay, cancelRepay, declineRepay,
+  requestRepay, confirmRepay, cancelRepay, declineRepay, setRepayer,
 } from './loanActions.js';
 
 async function health(request, env) {
@@ -103,6 +103,7 @@ const paramRoutes = [
   ['POST', new RegExp(`^/api/loans/${ID}/confirm-repay$`), confirmRepay],
   ['POST', new RegExp(`^/api/loans/${ID}/cancel-repay$`), cancelRepay],
   ['POST', new RegExp(`^/api/loans/${ID}/decline-repay$`), declineRepay],
+  ['POST', new RegExp(`^/api/loans/${ID}/repayer$`), setRepayer],
 ];
 
 function findRoute(method, pathname) {

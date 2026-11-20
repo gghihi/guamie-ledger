@@ -341,6 +341,62 @@ check('LINE：對方在 LINE 否定 → 變成「被否定」', (await call('A',
 const ub = await call('A', 'DELETE', '/api/line/binding');
 check('LINE：網頁版解除綁定', ub.status === 200 && (await call('A', 'GET', '/api/line/status')).data.bound === false);
 
+// ───── 歷史紀錄 H2：自動分類、實際還款人、補填 ─────
+const h2Find = async (who, item) => (await call(who, 'GET', '/api/loans')).data.loans.find((l) => l.item === item);
+const h2Coffee = await newLoan('B', { item: '珍珠奶茶', amount: 600 });
+check('H2：記帳時自動分類（珍珠奶茶 → 飲料）', (await h2Find('A', '珍珠奶茶'))?.category === '飲料');
+const h2Gift = await newLoan('B', { item: '神秘小物', amount: 150 });
+check('H2：比對不到的項目 → 其他（F7）', (await h2Find('A', '神秘小物'))?.category === '其他');
+
+// 修改重送時重新分類
+const h2Re = await newLoan('B', { item: '未知', amount: 90 });
+await call('A', 'POST', `/api/loans/${h2Re}/reject`, {});
+await call('B', 'PUT', `/api/loans/${h2Re}`, { amount: 90, direction: 'me_lent', item: '計程車', date: today });
+check('H2：修改重送後依新項目重新分類（計程車 → 交通）', (await h2Find('A', '計程車'))?.category === '交通');
+
+// 預設還款人＝欠錢的人（B 記帳、B 借出 → A 欠錢）
+await call('A', 'POST', `/api/loans/${h2Coffee}/approve`);
+const h2r1 = await call('A', 'POST', `/api/loans/${h2Coffee}/repay`);
+check('H2：已還款沒指定還款人 → 預設為欠錢的人', h2r1.status === 200 && h2r1.data.loan.repaidBy?.isMe === true, h2r1.data.loan);
+
+// 取消標記會清空還款人
+await call('A', 'POST', `/api/loans/${h2Coffee}/cancel-repay`);
+check('H2：取消標記後還款人清空', (await h2Find('A', '珍珠奶茶')).repaidBy === null);
+
+// F8：指定由借出的人（B）負擔
+const meB = (await call('B', 'GET', '/api/me')).data.user.id;
+const h2bad = await call('A', 'POST', `/api/loans/${h2Coffee}/repay`, { repaidBy: 'someone-else' });
+check('H2：還款人只能是這筆的兩個人之一', h2bad.status === 400, h2bad.data);
+await call('A', 'POST', `/api/loans/${h2Coffee}/repay`, { repaidBy: meB });
+await call('B', 'POST', `/api/loans/${h2Coffee}/confirm-repay`);
+const h2paid = await h2Find('A', '珍珠奶茶');
+check('H2：還款人非原欠款人時，以實際還款人為準（F8）', h2paid.status === 'paid' && h2paid.repaidBy?.id === meB && h2paid.repaidBy.name, h2paid);
+
+// 「還沒收到」也會清空還款人
+await call('A', 'POST', `/api/loans/${h2Gift}/approve`);
+await call('A', 'POST', `/api/loans/${h2Gift}/repay`);
+await call('B', 'POST', `/api/loans/${h2Gift}/decline-repay`, {});
+check('H2：對方按「還沒收到」後還款人清空', (await h2Find('A', '神秘小物')).repaidBy === null);
+
+// 補填還款人（F11）：只限已還
+const meA = (await call('A', 'GET', '/api/me')).data.user.id;
+const h2s0 = await call('A', 'POST', `/api/loans/${h2Gift}/repayer`, { userId: meA });
+check('H2：未還的紀錄不能補填還款人', h2s0.status === 409, h2s0.data);
+// 模擬「上線前就還清」的舊資料：已還但沒有還款人
+await call('A', 'POST', `/api/loans/${h2Gift}/repay`);
+await call('B', 'POST', `/api/loans/${h2Gift}/confirm-repay`);
+const { execSync } = await import('node:child_process');
+execSync(`npx wrangler d1 execute guamie-ledger-db --local --command "UPDATE loans SET repaid_by = NULL WHERE id = '${h2Gift}'"`, { stdio: 'ignore', shell: true });
+check('H2：舊資料（已還、無還款人）顯示為未指定', (await h2Find('A', '神秘小物')).repaidBy === null);
+const h2s1 = await call('B', 'POST', `/api/loans/${h2Gift}/repayer`, { userId: 'nobody' });
+check('H2：補填的還款人只能是這筆的兩個人之一', h2s1.status === 400, h2s1.data);
+const h2s2 = await call('B', 'POST', `/api/loans/${h2Gift}/repayer`, { userId: meA });
+check('H2：補填還款人成功（F11）', h2s2.status === 200 && h2s2.data.loan.repaidBy?.id === meA, h2s2.data);
+const h2ev = await call('A', 'GET', `/api/loans/${h2Gift}/events`);
+check('H2：狀態紀錄多一筆「補填還款人」', h2ev.data.events.at(-1)?.action === 'set_repayer' && h2ev.data.events.at(-1)?.note === '補填還款人', h2ev.data.events.at(-1));
+const h2s3 = await call('C', 'POST', `/api/loans/${h2Gift}/repayer`, { userId: meA });
+check('H2：別的小窩不能補填', h2s3.status === 404, h2s3.data);
+
 // ───── 離開小窩 ─────
 const lv0 = await call('A', 'POST', '/api/ledgers/leave');
 check('離開：還有沒結清的帳 → 不能離開，並列出這些帳', lv0.status === 409 && lv0.data.code === 'not_settled' && lv0.data.openLoans.length > 0, lv0.data);

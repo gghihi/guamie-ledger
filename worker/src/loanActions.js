@@ -11,6 +11,8 @@ import { missingFields, sanitizeDraft } from './parse/index.js';
 import { todayIn } from './parse/dates.js';
 import { notify } from './notify.js';
 import { HttpError, json, readJson, nowIso, cleanText } from './util.js';
+import { classifyForLedger } from './categories.js';
+import { requireMyLedger } from './ledgers.js';
 
 /** 讀取一筆借款（只限自己的帳本），找不到就 404 */
 async function loadLoanRow(env, lc, loanId) {
@@ -138,11 +140,12 @@ export async function resubmitLoan(request, env, { id }) {
 
   const lenderId = fields.direction === 'me_lent' ? user.id : lc.partner.id;
   const borrowerId = fields.direction === 'me_lent' ? lc.partner.id : user.id;
+  const category = await classifyForLedger(env, lc.ledgerId, fields.item); // 項目改了就依目前規則重新分類
   const res = await env.DB.prepare(
-    `UPDATE loans SET amount = ?, item = ?, loan_date = ?, lender_id = ?, borrower_id = ?,
+    `UPDATE loans SET amount = ?, item = ?, loan_date = ?, lender_id = ?, borrower_id = ?, category = ?,
             status = 'pending', reject_reason = NULL, updated_at = ?
       WHERE id = ? AND ledger_id = ? AND status = 'rejected' AND created_by = ?`,
-  ).bind(fields.amount, fields.item, fields.date, lenderId, borrowerId, nowIso(), id, lc.ledgerId, user.id).run();
+  ).bind(fields.amount, fields.item, fields.date, lenderId, borrowerId, category, nowIso(), id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '修改重送');
 
   const snap = JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId });
@@ -159,12 +162,17 @@ export async function requestRepay(request, env, { id }) {
   const lc = await loadLedgerContext(env, user);
   const row = await loadLoanRow(env, lc, id);
   if (row.status !== 'unpaid') throw stateError(row, '標記還款');
+  // 實際還款人（歷史紀錄的花費歸屬）：只能是這筆的借出人或欠款人；沒指定就是欠錢的人
+  const body = await readJson(request).catch(() => ({}));
+  const repaidBy = body && body.repaidBy ? String(body.repaidBy) : row.borrower_id;
+  if (![row.lender_id, row.borrower_id].includes(repaidBy)) throw new HttpError(400, '還款人只能是這筆帳的兩個人之一', 'bad_repayer');
 
   const res = await env.DB.prepare(
-    "UPDATE loans SET status = 'repay_pending', repay_requested_by = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'unpaid'",
-  ).bind(user.id, nowIso(), id, lc.ledgerId).run();
+    "UPDATE loans SET status = 'repay_pending', repay_requested_by = ?, repaid_by = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'unpaid'",
+  ).bind(user.id, repaidBy, nowIso(), id, lc.ledgerId).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '標記還款');
-  await logEvent(env, row, user.id, 'request_repay', 'unpaid', 'repay_pending').run();
+  const note = repaidBy === row.borrower_id ? null : '由借出的人自己負擔';
+  await logEvent(env, row, user.id, 'request_repay', 'unpaid', 'repay_pending', note).run();
   notify(env, { type: 'repay_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
@@ -196,7 +204,7 @@ export async function cancelRepay(request, env, { id }) {
   if (row.repay_requested_by !== user.id) throw new HttpError(403, '只有標記還款的人可以取消；你可以按「還沒收到」', 'not_allowed');
 
   const res = await env.DB.prepare(
-    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by = ?",
+    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, repaid_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by = ?",
   ).bind(nowIso(), id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '取消還款標記');
   await logEvent(env, row, user.id, 'cancel_repay', 'repay_pending', 'unpaid').run();
@@ -214,7 +222,7 @@ export async function declineRepay(request, env, { id }) {
   if (row.repay_requested_by === user.id) throw new HttpError(403, '自己標記的還款請用「取消標記」', 'not_allowed');
 
   const res = await env.DB.prepare(
-    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by <> ?",
+    "UPDATE loans SET status = 'unpaid', repay_requested_by = NULL, repaid_by = NULL, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'repay_pending' AND repay_requested_by <> ?",
   ).bind(nowIso(), id, lc.ledgerId, user.id).run();
   if (!res.meta.changes) throw stateError(await loadLoanRow(env, lc, id), '退回還款');
   await logEvent(env, row, user.id, 'decline_repay', 'repay_pending', 'unpaid', reason).run();
@@ -269,4 +277,28 @@ export async function loanEvents(request, env, { id }) {
       byMe: e.actor_id === user.id,
     })),
   });
+}
+
+/**
+ * POST /api/loans/:id/repayer：補填（或修改）已還紀錄的實際還款人（歷史紀錄 F11）
+ *  ・只限「已還」的紀錄；還款人只能是這筆的借出人或欠款人
+ *  ・只剩一個人的小窩也能補填（不需要另一半在）
+ *  ・前端會先跳出確認畫面（F12）
+ */
+export async function setRepayer(request, env, { id }) {
+  const user = await requireUser(request, env);
+  const ledgerId = await requireMyLedger(env, user.id);
+  const body = await readJson(request);
+  const repaidBy = String((body && body.userId) || '');
+  const row = await env.DB.prepare('SELECT * FROM loans WHERE id = ? AND ledger_id = ?').bind(id, ledgerId).first();
+  if (!row) throw new HttpError(404, '找不到這筆紀錄，可能已被刪除', 'not_found');
+  if (row.status !== 'paid') throw new HttpError(409, '只有「已還」的紀錄可以補填還款人', 'bad_state');
+  if (![row.lender_id, row.borrower_id].includes(repaidBy)) throw new HttpError(400, '還款人只能是這筆帳的兩個人之一', 'bad_repayer');
+
+  await env.DB.batch([
+    env.DB.prepare("UPDATE loans SET repaid_by = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'paid'")
+      .bind(repaidBy, nowIso(), id, ledgerId),
+    logEvent(env, row, user.id, 'set_repayer', 'paid', 'paid', row.repaid_by ? '修改還款人' : '補填還款人'),
+  ]);
+  return json(request, env, { ok: true, loan: await getLoan(env, { ledgerId }, id, user.id) });
 }
