@@ -117,7 +117,7 @@ function findRoute(method, pathname) {
 export default {
   async fetch(request, rawEnv, ctx) {
     // 讓各功能可以把「通知」交給背景執行（不拖慢回應）
-    const env = Object.assign(Object.create(rawEnv), { waitUntil: (p) => ctx?.waitUntil?.(p) });
+    const env = { ...rawEnv, waitUntil: (p) => ctx?.waitUntil?.(p) };
     if (request.method === 'OPTIONS') return handlePreflight(request, env);
 
     const { pathname } = new URL(request.url);

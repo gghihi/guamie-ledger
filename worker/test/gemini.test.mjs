@@ -156,6 +156,17 @@ test('有轉送站時：交給轉送站，而且不在請求裡帶金鑰', async
   assert.equal(r.fields.amount, 88);
 });
 
+test('後端入口包裝設定後，模型名稱與轉送站仍讀得到（防止再次出現 no_model）', async () => {
+  const { default: worker } = await import('../src/index.js');
+  const fake = fakeGemini({ isLoan: true, amount: 1, direction: 'me_lent', item: 'x', date: today });
+  const rawEnv = { GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_PROXY: { fetch: fake }, ALLOWED_ORIGINS: '', DB: { prepare: () => ({ first: async () => ({ n: 3 }) }) } };
+  const res = await worker.fetch(new Request('https://x.dev/api/health?gemini=1'), rawEnv, { waitUntil() {} });
+  const body = await res.json();
+  assert.equal(body.gemini, 'ok');
+  // 確認入口包裝後的 env 是一般物件（展開時不會遺失設定）
+  assert.equal({ ...{ ...rawEnv, waitUntil() {} } }.GEMINI_MODEL, 'gemini-3.8-flash');
+});
+
 test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清掉', () => {
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });
