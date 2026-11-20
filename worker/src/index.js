@@ -6,6 +6,7 @@ import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.j
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger, leaveLedger } from './ledgers.js';
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
+import { historyPeriods, historySummary, historyUnspecified } from './history.js';
 import { geminiTransport } from './parse/gemini.js';
 import { subscribePush, unsubscribePush, testPush } from './push.js';
 import { lineWebhook, createBindCode, lineStatus, unbindLine } from './line.js';
@@ -77,6 +78,11 @@ const routes = {
 
   // 統整
   'GET /api/summary': getSummary,
+
+  // 歷史紀錄
+  'GET /api/history/periods': historyPeriods,
+  'GET /api/history': historySummary,
+  'GET /api/history/unspecified': historyUnspecified,
 
   // 網頁推播
   'POST /api/push/subscribe': subscribePush,

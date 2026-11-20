@@ -397,6 +397,79 @@ check('H2：狀態紀錄多一筆「補填還款人」', h2ev.data.events.at(-1)
 const h2s3 = await call('C', 'POST', `/api/loans/${h2Gift}/repayer`, { userId: meA });
 check('H2：別的小窩不能補填', h2s3.status === 404, h2s3.data);
 
+// ───── 歷史紀錄 H3：統計 API（使用 2025 年的日期，和其他測試資料分開）─────
+async function h3Paid(item, amount, date, payer) {
+  const id = await newLoan('B', { item, amount, date }); // B 借出、A 欠錢
+  await call('A', 'POST', `/api/loans/${id}/approve`);
+  await call('A', 'POST', `/api/loans/${id}/repay`, { repaidBy: payer });
+  await call('B', 'POST', `/api/loans/${id}/confirm-repay`);
+  return id;
+}
+// 2025-03：已還 600（咖啡 300、奶茶 300，都由 A 還）＋已還 200（晚餐，由 B 自己負擔）；另有一筆未還 1000
+await h3Paid('咖啡', 300, '2025-03-05', meA);
+await h3Paid('奶茶', 300, '2025-03-06', meA);
+await h3Paid('晚餐', 200, '2025-03-20', meB);
+const h3unpaid = await newLoan('B', { item: '房租', amount: 1000, date: '2025-03-28' });
+await call('A', 'POST', `/api/loans/${h3unpaid}/approve`);
+// 2025-04：飲料 800（B 還）、餐飲 1200（A 還）→ 40%、60%
+await h3Paid('咖啡豆禮盒咖啡', 800, '2025-04-02', meB);
+await h3Paid('火鍋', 1200, '2025-04-10', meA);
+// 2025-05：一筆 150 的舊資料（已還、未指定還款人）
+const h3old = await h3Paid('神秘舊帳', 150, '2025-05-01', meA);
+execSync(`npx wrangler d1 execute guamie-ledger-db --local --command "UPDATE loans SET repaid_by = NULL WHERE id = '${h3old}'"`, { stdio: 'ignore', shell: true });
+// 2025-06：只有一筆待確認（沒有已還）；2025-07：只有被否定的
+await newLoan('B', { item: '電影', amount: 300, date: '2025-06-15' });
+const h3rej = await newLoan('B', { item: '門票', amount: 500, date: '2025-07-15' });
+await call('A', 'POST', `/api/loans/${h3rej}/reject`, {});
+
+const h3p = await call('A', 'GET', '/api/history/periods');
+const h3months = h3p.data.months.map((m) => m.month);
+check('H3 F1：期間列表列出有紀錄的月份（03、04、05、06），新的在前', ['2025-06', '2025-05', '2025-04', '2025-03'].every((m) => h3months.includes(m))
+  && h3months.indexOf('2025-06') < h3months.indexOf('2025-03') && h3p.data.years.includes('2025'), h3months);
+check('H3 F1：只有被否定紀錄的月份不列出', !h3months.includes('2025-07'), h3months);
+
+const h3m3 = (await call('A', 'GET', '/api/history?month=2025-03')).data;
+check('H3 F2：月總花費＝已還加總（600＋200＝800）', h3m3.total === 800 && h3m3.count === 3, h3m3);
+check('H3 F4：未還的 1000 不計入', h3m3.total === 800);
+const pA = h3m3.people.find((p) => p.userId === meA);
+const pB = h3m3.people.find((p) => p.userId === meB);
+check('H3 F3／F8：依實際還款人加總（呱呱 600、咩咩寶 200）', pA?.amount === 600 && pB?.amount === 200 && pA.isMe === true, h3m3.people);
+const h3drink = h3m3.categories.find((c) => c.name === '飲料');
+check('H3 F5：咖啡＋奶茶歸入飲料並正確加總（600、2 筆、75%）', h3drink?.amount === 600 && h3drink.count === 2 && h3drink.percent === 75, h3m3.categories);
+
+const h3m4 = (await call('A', 'GET', '/api/history?month=2025-04')).data;
+const pct = Object.fromEntries(h3m4.categories.map((c) => [c.name, c.percent]));
+check('H3 F13：飲料 800、餐飲 1200 → 40%、60%', pct['飲料'] === 40 && pct['餐飲'] === 60, h3m4.categories);
+check('H3 F14：各分類金額加總＝總花費', h3m4.categories.reduce((a, c) => a + c.amount, 0) === h3m4.total);
+check('H3：分類依規則順序排列（餐飲在飲料前面）', h3m4.categories[0].name === '餐飲', h3m4.categories.map((c) => c.name));
+
+const h3m5 = (await call('A', 'GET', '/api/history?month=2025-05')).data;
+check('H3 F10：未指定還款人的 150 計入總花費，並單獨列出', h3m5.total === 150 && h3m5.unspecified.amount === 150 && h3m5.unspecified.count === 1
+  && h3m5.people.every((p) => p.amount === 0), h3m5);
+check('H3：未指定的紀錄仍依項目分類（神秘舊帳 → 其他）', h3m5.categories[0]?.name === '其他' && h3m5.categories[0].amount === 150, h3m5.categories);
+const h3u = (await call('A', 'GET', '/api/history/unspecified?year=2025')).data;
+check('H3 F10：未指定列表列出這筆，並附上可選的兩個人', h3u.loans.length === 1 && h3u.loans[0].id === h3old && h3u.loans[0].lender.id === meB && h3u.loans[0].borrower.id === meA, h3u.loans);
+await call('A', 'POST', `/api/loans/${h3old}/repayer`, { userId: meB });
+const h3m5b = (await call('A', 'GET', '/api/history?month=2025-05')).data;
+check('H3 F11：補填給咩咩寶後，咩咩寶 +150、未指定歸零', h3m5b.people.find((p) => p.userId === meB)?.amount === 150 && h3m5b.unspecified.amount === 0, h3m5b);
+check('H3 F11：補填後不再出現在未指定列表', (await call('A', 'GET', '/api/history/unspecified?year=2025')).data.loans.length === 0);
+
+const h3m6 = (await call('A', 'GET', '/api/history?month=2025-06')).data;
+check('H3 F15：沒有已還紀錄的月份 → 總額 0、標示為空', h3m6.total === 0 && h3m6.empty === true && h3m6.categories.length === 0, h3m6);
+
+const h3y = (await call('A', 'GET', '/api/history?year=2025')).data;
+check('H3 F13：年份統計＝全年已還加總（800＋2000＋150）', h3y.total === 2950 && h3y.period.type === 'year', h3y.total);
+check('H3：兩個人看到的年度數字一致', (await call('B', 'GET', '/api/history?year=2025')).data.total === 2950);
+
+const h3e1 = await call('A', 'GET', '/api/history');
+const h3e2 = await call('A', 'GET', '/api/history?month=2025-13');
+const h3e3 = await call('A', 'GET', '/api/history?month=2025-03&year=2025');
+check('H3：期間參數缺少或格式錯誤 → 拒絕', h3e1.status === 400 && h3e2.status === 400 && h3e3.status === 400);
+const h3n = await call(null, 'GET', '/api/history?year=2025');
+check('H3：沒登入 → 拒絕', h3n.status === 401);
+const h3c = (await call('C', 'GET', '/api/history?year=2025')).data;
+check('H3：別的小窩看不到這些花費（C 的 2025 年為 0）', h3c.total === 0, h3c.total);
+
 // ───── 離開小窩 ─────
 const lv0 = await call('A', 'POST', '/api/ledgers/leave');
 check('離開：還有沒結清的帳 → 不能離開，並列出這些帳', lv0.status === 409 && lv0.data.code === 'not_settled' && lv0.data.openLoans.length > 0, lv0.data);
