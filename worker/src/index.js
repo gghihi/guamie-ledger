@@ -7,6 +7,7 @@ import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, join
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
 import { historyPeriods, historySummary, historyUnspecified } from './history.js';
+import { getCategories, updateCategories, recalculateCategories } from './categoryApi.js';
 import { geminiTransport } from './parse/gemini.js';
 import { subscribePush, unsubscribePush, testPush } from './push.js';
 import { lineWebhook, createBindCode, lineStatus, unbindLine } from './line.js';
@@ -83,6 +84,11 @@ const routes = {
   'GET /api/history/periods': historyPeriods,
   'GET /api/history': historySummary,
   'GET /api/history/unspecified': historyUnspecified,
+
+  // 分類規則
+  'GET /api/categories': getCategories,
+  'PUT /api/categories': updateCategories,
+  'POST /api/categories/recalculate': recalculateCategories,
 
   // 網頁推播
   'POST /api/push/subscribe': subscribePush,

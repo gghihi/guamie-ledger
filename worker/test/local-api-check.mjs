@@ -470,6 +470,44 @@ check('H3：沒登入 → 拒絕', h3n.status === 401);
 const h3c = (await call('C', 'GET', '/api/history?year=2025')).data;
 check('H3：別的小窩看不到這些花費（C 的 2025 年為 0）', h3c.total === 0, h3c.total);
 
+// ───── 歷史紀錄 H4：分類規則管理（F6、F9）─────
+const h4g = (await call('A', 'GET', '/api/categories')).data.categories;
+check('H4：讀取分類規則（初始 9 類，「其他」在最後）', h4g.length === 9 && h4g[0].name === '餐飲' && h4g.at(-1).name === '其他' && h4g.at(-1).isOther === true, h4g.map((c) => c.name));
+
+// F6：在「購物」加入「禮物」與「神秘」
+const h4rules = h4g.filter((c) => !c.isOther).map((c) => (c.name === '購物' ? { ...c, keywords: [...c.keywords, '禮物', '神秘'] } : c));
+const h4p = await call('A', 'PUT', '/api/categories', { categories: h4rules });
+check('H4 F6：更新分類規則成功，「其他」仍自動放在最後', h4p.status === 200 && h4p.data.categories.find((c) => c.name === '購物').keywords.includes('禮物') && h4p.data.categories.at(-1).name === '其他', h4p.data);
+await newLoan('B', { item: '生日禮物', amount: 999 });
+check('H4 F6：新規則套用到新紀錄（生日禮物 → 購物）', (await call('A', 'GET', '/api/loans')).data.loans.find((l) => l.item === '生日禮物')?.category === '購物');
+check('H4：另一個成員看到的是同一份規則', (await call('B', 'GET', '/api/categories')).data.categories.find((c) => c.name === '購物').keywords.includes('神秘'));
+
+// F9：舊紀錄不受影響（2025-05 的「神秘舊帳」仍是「其他」）
+const h4before = (await call('A', 'GET', '/api/history?month=2025-05')).data.categories;
+check('H4 F9：改規則後，舊月份的分類數字不變', h4before.length === 1 && h4before[0].name === '其他' && h4before[0].amount === 150, h4before);
+const h4rc = await call('A', 'POST', '/api/categories/recalculate');
+check('H4 F9：按「重新分類」後回報改了幾筆', h4rc.status === 200 && h4rc.data.updated >= 2 && h4rc.data.total > 0, h4rc.data);
+const h4after = (await call('A', 'GET', '/api/history?month=2025-05')).data.categories;
+check('H4 F9：重新分類後，舊月份改用新規則（神秘舊帳 → 購物）', h4after.length === 1 && h4after[0].name === '購物' && h4after[0].amount === 150, h4after);
+const h4rc2 = await call('A', 'POST', '/api/categories/recalculate');
+check('H4：再按一次重新分類，沒有需要改的（0 筆）', h4rc2.data.updated === 0, h4rc2.data);
+
+// 調整順序影響衝突結果：把「飲料」排到「餐飲」前面 → 「早餐奶茶」改歸飲料
+const h4order = (await call('A', 'GET', '/api/categories')).data.categories.filter((c) => !c.isOther);
+const drink = h4order.find((c) => c.name === '飲料');
+await call('A', 'PUT', '/api/categories', { categories: [drink, ...h4order.filter((c) => c.name !== '飲料')] });
+await newLoan('B', { item: '早餐奶茶', amount: 60 });
+check('H4：調整排序後，同時符合多類時以新的第一個為準（早餐奶茶 → 飲料）', (await call('A', 'GET', '/api/loans')).data.loans.find((l) => l.item === '早餐奶茶')?.category === '飲料');
+
+// 檢查與權限
+const h4dup = await call('A', 'PUT', '/api/categories', { categories: [{ name: '餐飲', keywords: [] }, { name: '餐飲', keywords: [] }] });
+check('H4：分類名稱重複 → 拒絕，而且規則沒有被改掉', h4dup.status === 400 && (await call('A', 'GET', '/api/categories')).data.categories[0].name === '飲料', h4dup.data);
+const h4n = await call(null, 'GET', '/api/categories');
+check('H4：沒登入 → 拒絕', h4n.status === 401);
+await call('C', 'PUT', '/api/categories', { categories: [{ name: 'C的分類', keywords: ['禮物'] }] });
+const h4a = (await call('A', 'GET', '/api/categories')).data.categories.map((c) => c.name);
+check('H4：別的小窩改自己的規則，不影響這本帳', !h4a.includes('C的分類') && (await call('C', 'GET', '/api/categories')).data.categories[0].name === 'C的分類', h4a);
+
 // ───── 離開小窩 ─────
 const lv0 = await call('A', 'POST', '/api/ledgers/leave');
 check('離開：還有沒結清的帳 → 不能離開，並列出這些帳', lv0.status === 409 && lv0.data.code === 'not_settled' && lv0.data.openLoans.length > 0, lv0.data);
