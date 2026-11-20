@@ -17,7 +17,18 @@ function urlBase64ToUint8Array(base64) {
 export async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    return await navigator.serviceWorker.register('./sw.js');
+    // 背景小幫手有新版本時：自動換新，並重新載入一次畫面（第一次安裝時不重新載入）
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) {
+        reloaded = true;
+        location.reload();
+      }
+    });
+    const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
+    reg.update().catch(() => {});
+    return reg;
   } catch (err) {
     console.warn('背景小幫手註冊失敗', err);
     return null;

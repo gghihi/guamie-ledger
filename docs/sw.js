@@ -2,7 +2,7 @@
 // 負責：接收推播並顯示通知、點通知時打開 APP。
 // 不快取帳目資料（避免看到舊的帳），只在沒網路時顯示提示頁。
 
-const VERSION = 'v11-1';
+const VERSION = 'v13-2';
 const OFFLINE_URL = './offline.html';
 
 self.addEventListener('install', (event) => {
@@ -17,10 +17,19 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// 只有「打開頁面」沒網路時才顯示離線頁；其他一律走網路，確保資料是最新的
+// 網頁、程式、樣式：每次都向 GitHub 確認有沒有新版本（沒變就很快，有變就拿新的），
+// 避免手機暫存 10 分鐘、更新後還看到舊畫面。沒網路時才顯示離線頁。
 self.addEventListener('fetch', (event) => {
-  if (event.request.mode !== 'navigate') return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const sameSite = new URL(req.url).origin === self.location.origin;
+  if (req.mode === 'navigate') {
+    event.respondWith(fetch(req, { cache: 'no-cache' }).catch(() => caches.match(OFFLINE_URL)));
+    return;
+  }
+  if (sameSite && ['script', 'style', 'manifest'].includes(req.destination)) {
+    event.respondWith(fetch(req, { cache: 'no-cache' }).catch(() => fetch(req)));
+  }
 });
 
 // 收到推播 → 顯示通知
