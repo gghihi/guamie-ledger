@@ -371,3 +371,6 @@ input:focus { border-color: var(--frog); }
 
 /* ───── 離開小窩 ───── */
 .leave-btn { margin-top: 12px; }
+
+/* 建立／加入切換 */
+.setup-switch { margin: 0 0 8px; }

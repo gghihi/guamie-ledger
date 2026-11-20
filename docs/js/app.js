@@ -38,23 +38,34 @@ function renderLogin() {
 
 function renderSetup() {
   const name = state.me.user.displayName;
+  // 建立與加入放在同一張卡片，用上方按鈕切換
   app.innerHTML = `
     ${userBar()}
     <section class="card">
-      <h2>🏠 建立新的小窩</h2>
-      <p class="hint">由第一個人建立，建好後會得到邀請碼給另一半。</p>
-      <label>你在小窩裡的暱稱<input id="c-nick" maxlength="12" placeholder="例如：呱呱" value="${esc(name)}" /></label>
-      <button class="btn" id="create">建立小窩</button>
-    </section>
-    <div class="or">或</div>
-    <section class="card">
-      <h2>🔑 用邀請碼加入</h2>
-      <p class="hint">另一半已經建好小窩了？輸入他給你的邀請碼。</p>
-      <label>邀請碼<input id="j-code" maxlength="9" placeholder="例如：ABCD-2345" autocapitalize="characters" autocomplete="off" /></label>
-      <label>你在小窩裡的暱稱<input id="j-nick" maxlength="12" placeholder="例如：咩咩" value="${esc(name)}" /></label>
-      <button class="btn sheep" id="join">加入小窩</button>
+      <div class="seg setup-switch" role="tablist">
+        <button type="button" role="tab" data-mode="create" class="on">🏠 建立小窩</button>
+        <button type="button" role="tab" data-mode="join">🔑 加入小窩</button>
+      </div>
+      <div data-panel="create">
+        <p class="hint">由第一個人建立，建好後會得到邀請碼給另一半。</p>
+        <label>你在小窩裡的暱稱<input id="c-nick" maxlength="12" placeholder="例如：呱呱" value="${esc(name)}" /></label>
+        <button class="btn" id="create">建立小窩</button>
+      </div>
+      <div data-panel="join" hidden>
+        <p class="hint">另一半已經建好小窩了？輸入他給你的邀請碼。</p>
+        <label>邀請碼<input id="j-code" maxlength="9" placeholder="例如：ABCD-2345" autocapitalize="characters" autocomplete="off" /></label>
+        <label>你在小窩裡的暱稱<input id="j-nick" maxlength="12" placeholder="例如：咩咩" value="${esc(name)}" /></label>
+        <button class="btn sheep" id="join">加入小窩</button>
+      </div>
     </section>`;
   bindUserBar();
+
+  app.querySelectorAll('[data-mode]').forEach((b) => {
+    b.onclick = () => {
+      app.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
+      app.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== b.dataset.mode; });
+    };
+  });
 
   document.getElementById('create').onclick = (e) =>
     withBusy(e.currentTarget, async () => {
