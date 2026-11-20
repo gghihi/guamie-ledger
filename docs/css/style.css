@@ -374,3 +374,9 @@ input:focus { border-color: var(--frog); }
 
 /* 建立／加入切換 */
 .setup-switch { margin: 0 0 8px; }
+
+/* ───── 設定畫面（通知、LINE） ───── */
+.settings-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.settings-head h2 { margin: 0; }
+.modal.settings { max-width: 420px; background: var(--cream); }
+.modal.settings .card { box-shadow: none; border-width: 3px; margin-top: 12px; }

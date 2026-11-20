@@ -3,7 +3,7 @@
 // 第 5 階段：對話式記帳、借款清單
 
 import { api, getToken, startGoogleLogin, finishGoogleLogin, logout } from './api.js';
-import { esc, toast, confirmDialog, withBusy } from './ui.js';
+import { esc, toast, confirmDialog, withBusy, openModal } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
@@ -141,8 +141,7 @@ function renderHome() {
     <div id="summary"></div>
     <div id="recorder"></div>
     <div id="loan-list"></div>
-    <div id="push-toggle"></div>
-    <div id="line-binding"></div>`;
+`;
   bindUserBar();
 
   if (together) {
@@ -151,8 +150,6 @@ function renderHome() {
     const summary = mountSummary(document.getElementById('summary'));
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
-    mountPushToggle(document.getElementById('push-toggle'));
-    mountLineBinding(document.getElementById('line-binding'));
   } else {
     mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
   }
@@ -252,11 +249,27 @@ function userBar() {
     <header class="userbar">
       ${u.avatarUrl ? `<img src="${esc(u.avatarUrl)}" alt="" referrerpolicy="no-referrer" />` : ''}
       <span>${esc(u.displayName)}</span>
+      <button class="btn tiny ghost" id="open-settings" aria-label="設定">⚙️ 設定</button>
       <button class="btn tiny ghost" id="logout">登出</button>
     </header>`;
 }
 
+/** ⚙️ 設定：通知與 LINE 綁定 */
+function openSettings() {
+  const { el } = openModal(`
+    <div class="settings-head">
+      <h2>⚙️ 設定</h2>
+      <button class="btn tiny ghost" data-close aria-label="關閉設定">✕ 關閉</button>
+    </div>
+    <div id="settings-push"></div>
+    <div id="settings-line"></div>`);
+  el.classList.add('settings');
+  mountPushToggle(el.querySelector('#settings-push'));
+  mountLineBinding(el.querySelector('#settings-line'));
+}
+
 function bindUserBar() {
+  document.getElementById('open-settings').onclick = openSettings;
   document.getElementById('logout').onclick = async (e) => {
     const ok = await confirmDialog({ title: '要登出嗎？', message: '登出後需要重新用 Google 登入。', okText: '登出' });
     if (!ok) return;
