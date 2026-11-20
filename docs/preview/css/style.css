@@ -381,7 +381,7 @@ input:focus { border-color: var(--frog); }
 .modal.settings { max-width: 420px; background: var(--cream); }
 .modal.settings .card { box-shadow: none; border-width: 3px; margin-top: 12px; }
 
-/* ───── 預覽版：麥克風移到輸入框下方置中、放大一倍 ───── */
+/* ───── 預覽版：麥克風移到輸入框下方置中，大小 65 ───── */
 .chat-input {
   display: grid;
   grid-template-columns: 1fr auto;   /* 第一排：輸入框＋送出 */
@@ -391,16 +391,16 @@ input:focus { border-color: var(--frog); }
   grid-row: 2;                       /* 第二排：麥克風 */
   grid-column: 1 / -1;
   justify-self: center;
-  width: 96px; height: 96px; min-width: 96px;
-  font-size: 2.6rem;
+  width: 65px; height: 65px; min-width: 65px;
+  font-size: 1.8rem;
   border-width: 4px;
   box-shadow: 0 5px 0 var(--wood);
   margin-top: 6px;
 }
 .chat-input .mic.rec {
-  width: 96px; min-width: 96px;
+  width: 65px; min-width: 65px;
   border-radius: 50%;
-  font-size: 1.1rem;
+  font-size: 0.85rem;
   box-shadow: 0 5px 0 #9e3f2b;
 }
 /* 預覽版標示，正式版不會出現 */
