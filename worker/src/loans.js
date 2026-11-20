@@ -113,11 +113,18 @@ export async function listLoans(request, env) {
 }
 
 const LOAN_SELECT = `
-  SELECT l.*, ml.nickname AS lender_name, mb.nickname AS borrower_name, mc.nickname AS creator_name
+  SELECT l.*,
+         COALESCE(ml.nickname, fl.nickname, '已離開的成員') AS lender_name,
+         COALESCE(mb.nickname, fb.nickname, '已離開的成員') AS borrower_name,
+         COALESCE(mc.nickname, fc.nickname, '已離開的成員') AS creator_name
     FROM loans l
     LEFT JOIN ledger_members ml ON ml.ledger_id = l.ledger_id AND ml.user_id = l.lender_id
     LEFT JOIN ledger_members mb ON mb.ledger_id = l.ledger_id AND mb.user_id = l.borrower_id
-    LEFT JOIN ledger_members mc ON mc.ledger_id = l.ledger_id AND mc.user_id = l.created_by`;
+    LEFT JOIN ledger_members mc ON mc.ledger_id = l.ledger_id AND mc.user_id = l.created_by
+    -- 已離開的成員：用離開時記下的暱稱
+    LEFT JOIN ledger_former_members fl ON fl.ledger_id = l.ledger_id AND fl.user_id = l.lender_id
+    LEFT JOIN ledger_former_members fb ON fb.ledger_id = l.ledger_id AND fb.user_id = l.borrower_id
+    LEFT JOIN ledger_former_members fc ON fc.ledger_id = l.ledger_id AND fc.user_id = l.created_by`;
 
 export async function getLoan(env, lc, id, meId) {
   const row = await env.DB.prepare(`${LOAN_SELECT} WHERE l.id = ? AND l.ledger_id = ?`).bind(id, lc.ledgerId).first();

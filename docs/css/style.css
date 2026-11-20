@@ -368,3 +368,6 @@ input:focus { border-color: var(--frog); }
 
 /* ───── 第 12 階段：LINE 綁定 ───── */
 .link-btn { display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
+
+/* ───── 離開小窩 ───── */
+.leave-btn { margin-top: 12px; }

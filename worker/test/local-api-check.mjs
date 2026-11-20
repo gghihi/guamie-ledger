@@ -341,6 +341,35 @@ check('LINE：對方在 LINE 否定 → 變成「被否定」', (await call('A',
 const ub = await call('A', 'DELETE', '/api/line/binding');
 check('LINE：網頁版解除綁定', ub.status === 200 && (await call('A', 'GET', '/api/line/status')).data.bound === false);
 
+// ───── 離開小窩 ─────
+const lv0 = await call('A', 'POST', '/api/ledgers/leave');
+check('離開：還有沒結清的帳 → 不能離開，並列出這些帳', lv0.status === 409 && lv0.data.code === 'not_settled' && lv0.data.openLoans.length > 0, lv0.data);
+// 把 A、B 小窩所有沒結清的帳處理掉：待確認→對方否定或自己撤回；未還→還款並確認
+for (const l of (await call('A', 'GET', '/api/loans')).data.loans) {
+  if (l.status === 'pending') await call(l.createdByMe ? 'A' : 'A', l.createdByMe ? 'POST' : 'POST', l.createdByMe ? `/api/loans/${l.id}/withdraw` : `/api/loans/${l.id}/reject`, {});
+  if (l.status === 'unpaid') { await call('A', 'POST', `/api/loans/${l.id}/repay`); await call('B', 'POST', `/api/loans/${l.id}/confirm-repay`); }
+  if (l.status === 'repay_pending') await call(l.repayRequestedByMe ? 'B' : 'A', 'POST', `/api/loans/${l.id}/confirm-repay`);
+}
+const paidBefore = (await call('B', 'GET', '/api/loans')).data.loans.filter((l) => l.status === 'paid').length;
+const lv1 = await call('A', 'POST', '/api/ledgers/leave');
+check('離開：結清後 A 可以離開（帳本保留）', lv1.status === 200 && lv1.data.deleted === false, lv1.data);
+check('離開：A 離開後看不到這本帳', (await call('A', 'GET', '/api/me')).data.ledger === null);
+const bMe = await call('B', 'GET', '/api/me');
+check('離開：B 變成小窩唯一成員且是建立者', bMe.data.ledger.members.length === 1 && bMe.data.ledger.members[0].role === 'owner', bMe.data.ledger);
+const bLoans = (await call('B', 'GET', '/api/loans')).data.loans;
+check('離開：B 仍看得到以前的帳，而且名字還顯示「呱呱」', bLoans.filter((l) => l.status === 'paid').length === paidBefore && bLoans.some((l) => l.lender.name === '呱呱' || l.borrower.name === '呱呱'), bLoans.slice(0, 2));
+const aLoans = await call('A', 'GET', '/api/loans');
+check('離開：A 不能再讀這本帳的借款', aLoans.status === 409, aLoans.data);
+const lvNew = await call('A', 'POST', '/api/ledgers', { nickname: '呱呱' });
+check('離開：A 可以建立新的小窩', lvNew.status === 201, lvNew.data);
+const bInv = await call('B', 'POST', '/api/ledgers/invite');
+check('離開：B 可以產生新的邀請碼', bInv.status === 200 && bInv.data.ledger.invite?.code, bInv.data);
+
+const bLedgerId = bMe.data.ledger.id;
+const lvLast = await call('B', 'POST', '/api/ledgers/leave');
+check('離開：最後一人離開 → 整本帳永久刪除', lvLast.status === 200 && lvLast.data.deleted === true, lvLast.data);
+check('離開：B 之後沒有小窩', (await call('B', 'GET', '/api/me')).data.ledger === null);
+
 const evil = await call('A', 'GET', '/api/me', undefined, 'https://evil.example');
 check('陌生網站呼叫 → 瀏覽器不放行（沒有 CORS 許可標頭）', !evil.headers.get('access-control-allow-origin'));
 

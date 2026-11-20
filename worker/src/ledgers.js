@@ -3,6 +3,8 @@
 
 import { requireUser } from './auth.js';
 import { HttpError, json, readJson, nowIso, isoAfter, DAY, newId, readableCode, cleanText } from './util.js';
+import { pushToUser } from './push.js';
+import { notifyLine } from './lineApi.js';
 
 const INVITE_DAYS = 7;
 
@@ -172,10 +174,71 @@ export async function joinLedger(request, env) {
       env.DB.prepare("INSERT INTO ledger_members (ledger_id, user_id, role, nickname) VALUES (?, ?, 'member', ?)")
         .bind(invite.ledger_id, user.id, cleanNickname(body.nickname, user.displayName)),
       env.DB.prepare('UPDATE invite_codes SET used_by = ?, used_at = ? WHERE code = ?').bind(user.id, nowIso(), code),
+      // 曾經離開又回來：拿掉「已離開」紀錄
+      env.DB.prepare('DELETE FROM ledger_former_members WHERE ledger_id = ? AND user_id = ?').bind(invite.ledger_id, user.id),
     ]);
   } catch (err) {
     if (String(err).includes('ledger_full')) throw new HttpError(409, '這個小窩已經滿了', 'ledger_full');
     throw err;
   }
   return json(request, env, { ok: true, ledger: await loadLedger(env, invite.ledger_id, user.id) });
+}
+
+/**
+ * POST /api/ledgers/leave：自己離開小窩
+ *  ・還有「待確認」「未還」「已還待確認」的帳 → 不能離開，回傳這些帳讓使用者先處理
+ *  ・另一個人還在 → 帳目留給他，記下我的暱稱（歷史紀錄才看得到名字），並通知他
+ *  ・我是最後一個人 → 永久刪除整本帳（成員、邀請碼、借款、紀錄一起刪除）
+ */
+export async function leaveLedger(request, env) {
+  const user = await requireUser(request, env);
+  const ledgerId = await requireMyLedger(env, user.id);
+
+  const { results: open } = await env.DB.prepare(
+    `SELECT item, amount, status, loan_date FROM loans
+      WHERE ledger_id = ? AND status IN ('pending', 'unpaid', 'repay_pending') ORDER BY loan_date DESC`,
+  ).bind(ledgerId).all();
+  if (open.length) {
+    return json(request, env, {
+      ok: false,
+      code: 'not_settled',
+      error: `還有 ${open.length} 筆帳沒有結清，處理完才能離開小窩`,
+      openLoans: open.map((r) => ({ item: r.item, amount: r.amount, status: r.status, date: r.loan_date })),
+    }, 409);
+  }
+
+  const { results: members } = await env.DB.prepare(
+    'SELECT user_id, nickname, role FROM ledger_members WHERE ledger_id = ?',
+  ).bind(ledgerId).all();
+  const me = members.find((m) => m.user_id === user.id);
+  const others = members.filter((m) => m.user_id !== user.id);
+
+  if (!others.length) {
+    // 最後一個人：永久刪除整本帳（資料庫設定好會一併刪除相關資料）
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM line_drafts WHERE ledger_id = ?').bind(ledgerId),
+      env.DB.prepare('DELETE FROM ledgers WHERE id = ?').bind(ledgerId),
+    ]);
+    return json(request, env, { ok: true, deleted: true });
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO ledger_former_members (ledger_id, user_id, nickname) VALUES (?, ?, ?)
+       ON CONFLICT(ledger_id, user_id) DO UPDATE SET nickname = excluded.nickname, left_at = excluded.left_at`,
+    ).bind(ledgerId, user.id, me.nickname || user.displayName || ''),
+    env.DB.prepare('DELETE FROM ledger_members WHERE ledger_id = ? AND user_id = ?').bind(ledgerId, user.id),
+    // 我原本是建立者：改由留下的人當建立者
+    env.DB.prepare("UPDATE ledger_members SET role = 'owner' WHERE ledger_id = ? AND user_id = ?").bind(ledgerId, others[0].user_id),
+    env.DB.prepare('DELETE FROM line_drafts WHERE ledger_id = ? AND line_user_id IN (SELECT line_user_id FROM line_bindings WHERE user_id = ?)').bind(ledgerId, user.id),
+  ]);
+
+  // 通知留下的人（網頁推播＋LINE），在背景送出
+  const body = `🚪 ${me.nickname || '對方'} 已離開小窩。帳目都還在，你可以產生新的邀請碼。`;
+  const job = Promise.all([
+    pushToUser(env, others[0].user_id, { title: '呱咩小窩帳', body, url: env.FRONTEND_URL, tag: 'left' }),
+    notifyLine(env, { toUserId: others[0].user_id, type: 'partner_left', loanId: null, body }),
+  ]).catch((err) => console.warn('離開通知失敗', err?.message));
+  if (env.waitUntil) env.waitUntil(job);
+  return json(request, env, { ok: true, deleted: false });
 }

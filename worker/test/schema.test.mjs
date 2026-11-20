@@ -41,7 +41,7 @@ test('所有資料表都建立成功', () => {
   const db = freshDb();
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
   assert.deepEqual(names, [
-    'invite_codes', 'ledger_members', 'ledgers', 'line_bind_codes', 'line_bindings', 'line_drafts',
+    'invite_codes', 'ledger_former_members', 'ledger_members', 'ledgers', 'line_bind_codes', 'line_bindings', 'line_drafts',
     'line_push_usage', 'loan_events', 'loans', 'login_codes', 'push_subscriptions', 'sessions', 'users',
   ]);
 });

@@ -3,7 +3,7 @@
 import { handlePreflight } from './cors.js';
 import { HttpError, json } from './util.js';
 import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.js';
-import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger } from './ledgers.js';
+import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger, leaveLedger } from './ledgers.js';
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
 import { geminiTransport } from './parse/gemini.js';
@@ -66,6 +66,7 @@ const routes = {
   'POST /api/ledgers': createLedger,
   'POST /api/ledgers/invite': regenerateInvite,
   'POST /api/ledgers/join': joinLedger,
+  'POST /api/ledgers/leave': leaveLedger,
 
   // 記帳
   'POST /api/parse': parseText,

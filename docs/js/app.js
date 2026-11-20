@@ -117,12 +117,14 @@ function renderHome() {
       }
     </section>
     <section class="card center soon"><p>📒 另一半加入後，就可以開始記帳囉！</p></section>`;
+  // 只剩自己時（例如另一半離開了），仍可查看以前的帳目
 
   app.innerHTML = `
     ${userBar()}
     <details class="card nest-info" ${together ? '' : 'open'}>
       <summary><h2>🏡 ${esc(ledger.name)}</h2><span class="hint">${together ? '兩個人都到齊了' : '等另一半加入中…'}</span></summary>
       <ul class="members">${members}</ul>
+      <button class="btn ghost danger leave-btn" id="leave-nest">🚪 離開小窩</button>
     </details>
     ${inviteBlock}
     <div id="summary"></div>
@@ -140,7 +142,11 @@ function renderHome() {
     mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
     mountPushToggle(document.getElementById('push-toggle'));
     mountLineBinding(document.getElementById('line-binding'));
+  } else {
+    mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
   }
+
+  document.getElementById('leave-nest').addEventListener('click', (e) => leaveNest(e.currentTarget, together));
 
   document.getElementById('edit-nick')?.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -175,6 +181,57 @@ function renderHome() {
       toast('新的邀請碼來了', 'ok');
       await refresh();
     });
+  });
+}
+
+/** 離開小窩：先檢查有沒有沒結清的帳，再依情況顯示不同的確認畫面 */
+async function leaveNest(button, together) {
+  const STATUS = { pending: '待確認', unpaid: '未還', repay_pending: '已還待確認' };
+  let open = [];
+  try {
+    open = (await api('/api/loans')).loans.filter((l) => STATUS[l.status]);
+  } catch (err) {
+    return toast(err.message, 'error');
+  }
+  if (open.length) {
+    const list = open.slice(0, 8).map((l) => `・${l.item} $${l.amount}（${STATUS[l.status]}）`).join('\n');
+    await confirmDialog({
+      title: '還有帳沒有結清喔',
+      message: [
+        `要先處理完這 ${open.length} 筆，才能離開小窩：`,
+        '',
+        list + (open.length > 8 ? '\n…' : ''),
+        '',
+        '待確認的請對方同意或否定（或自己撤回）；未還的請完成還款確認。',
+      ].join('\n'),
+      okText: '我知道了',
+      cancelText: '關閉',
+    });
+    return;
+  }
+  const ok = await confirmDialog(together
+    ? {
+        title: '確定要離開小窩嗎？',
+        message: [
+          '離開後：',
+          '・你將看不到這本帳',
+          '・帳目會留給另一半，他之後可以邀請別人加入',
+          '・另一半會收到通知',
+          '',
+          '離開後可以建立或加入新的小窩。',
+        ].join('\n'),
+        okText: '確定離開',
+      }
+    : {
+        title: '⚠️ 你是最後一個人',
+        message: '離開後，這本小窩和裡面所有的帳目會被「永久刪除」，無法復原。\n\n確定要離開嗎？',
+        okText: '永久刪除並離開',
+      });
+  if (!ok) return;
+  await withBusy(button, async () => {
+    const r = await api('/api/ledgers/leave', { method: 'POST' });
+    toast(r.deleted ? '小窩已刪除' : '已離開小窩', 'ok');
+    await refresh();
   });
 }
 

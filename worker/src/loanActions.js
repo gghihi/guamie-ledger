@@ -248,8 +248,11 @@ export async function loanEvents(request, env, { id }) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
   const { results } = await env.DB.prepare(
-    `SELECT e.action, e.from_status, e.to_status, e.note, e.snapshot, e.created_at, e.actor_id, m.nickname AS actor_name
-       FROM loan_events e LEFT JOIN ledger_members m ON m.ledger_id = e.ledger_id AND m.user_id = e.actor_id
+    `SELECT e.action, e.from_status, e.to_status, e.note, e.snapshot, e.created_at, e.actor_id,
+            COALESCE(m.nickname, f.nickname, '已離開的成員') AS actor_name
+       FROM loan_events e
+       LEFT JOIN ledger_members m ON m.ledger_id = e.ledger_id AND m.user_id = e.actor_id
+       LEFT JOIN ledger_former_members f ON f.ledger_id = e.ledger_id AND f.user_id = e.actor_id
       WHERE e.loan_id = ? AND e.ledger_id = ? ORDER BY e.id`,
   ).bind(id, lc.ledgerId).all();
   if (!results.length) throw new HttpError(404, '找不到這筆紀錄', 'not_found');
