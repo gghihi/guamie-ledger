@@ -1,5 +1,6 @@
 // 借款清單：分成「待確認」「未還」「已還」三區
 // 第 7 階段：同意、全部同意、否定、撤回、修改重送、刪除、查看狀態紀錄
+// 「未還」區另有「全部已還」：一次把所有未還標記為已還款（還是要等對方確認）
 
 import { api } from './api.js';
 import { esc, money, prettyDate, toast, confirmDialog, openModal, withBusy, todayTaipei } from './ui.js';
@@ -89,6 +90,7 @@ export function mountLoanList(container, ctx) {
     const current = TABS.find((t) => t.key === tab);
     const rows = loans.filter((l) => current.statuses.includes(l.status));
     const toApprove = loans.filter((l) => l.status === 'pending' && !l.createdByMe).length;
+    const toRepay = loans.filter((l) => l.status === 'unpaid').length;
     container.innerHTML = `
       <section class="card">
         <div class="tabs" role="tablist">
@@ -97,7 +99,8 @@ export function mountLoanList(container, ctx) {
             return `<button role="tab" data-tab="${t.key}" class="${t.key === tab ? 'on' : ''}">${t.label}<span class="count">${n}</span></button>`;
           }).join('')}
         </div>
-        ${tab === 'pending' && toApprove > 1 ? `<button class="btn approve-all" data-act="approve-all">全部同意（${toApprove} 筆）</button>` : ''}
+        ${tab === 'pending' && toApprove > 0 ? `<button class="btn approve-all" data-act="approve-all">全部同意（${toApprove} 筆）</button>` : ''}
+        ${tab === 'unpaid' && toRepay > 0 ? `<button class="btn approve-all" data-act="repay-all">全部已還（${toRepay} 筆）</button>` : ''}
         ${rows.length ? `<ul class="loans">${rows.map(row).join('')}</ul>` : '<p class="hint center-text empty">這裡還沒有紀錄 🐑</p>'}
       </section>`;
   }
@@ -114,7 +117,7 @@ export function mountLoanList(container, ctx) {
     if (!btn) return;
     const loan = loans.find((l) => l.id === btn.dataset.id);
     const handlers = {
-      approve, reject, withdraw, edit, delete: remove, detail, 'approve-all': approveAll,
+      approve, reject, withdraw, edit, delete: remove, detail, 'approve-all': approveAll, 'repay-all': repayAll,
       repay, 'confirm-repay': confirmRepay, 'cancel-repay': cancelRepay, 'decline-repay': declineRepay,
     };
     await handlers[btn.dataset.act]?.(loan, btn);
@@ -205,6 +208,44 @@ export function mountLoanList(container, ctx) {
         await api(`/api/loans/${l.id}/repay`, { method: 'POST', body: { repaidBy } });
         close();
         toast(`已標記，等${partner}確認`, 'ok');
+        await refresh();
+      });
+  }
+
+  /** 全部已還：列出所有「未還」，選誰出錢後一次標記；之後一樣要等對方確認 */
+  function repayAll() {
+    const list = loans.filter((x) => x.status === 'unpaid');
+    if (!list.length) return;
+    const total = list.reduce((s, x) => s + x.amount, 0);
+    let payer = 'borrower';
+    const { el, close } = openModal(`
+      <h2>全部 ${list.length} 筆都還了嗎？</h2>
+      <p class="multiline">${list.map((x) => `・${esc(x.item)} ${money(x.amount)}（${esc(x.borrower.name)} 欠 ${esc(x.lender.name)}）`).join('<br>')}</p>
+      <p><strong>合計 ${money(total)}</strong></p>
+      <div class="field">誰還的錢？<small class="hint">（歷史紀錄的花費會算給他）</small>
+        <div class="seg">
+          <button type="button" data-payer="borrower">各筆的欠錢的人<small>一般情況</small></button>
+          <button type="button" data-payer="lender">各筆的借出的人<small>借出的人自己負擔</small></button>
+        </div>
+      </div>
+      <p class="hint">標記後要等${esc(partner)}確認，才會移到「已還」。</p>
+      <div class="row">
+        <button class="btn ghost" data-close>取消</button>
+        <button class="btn" id="do-repay-all">全部已還</button>
+      </div>`);
+    const paint = () => el.querySelectorAll('[data-payer]').forEach((b) => b.classList.toggle('on', b.dataset.payer === payer));
+    paint();
+    el.querySelectorAll('[data-payer]').forEach((b) => {
+      b.onclick = () => {
+        payer = b.dataset.payer;
+        paint();
+      };
+    });
+    el.querySelector('#do-repay-all').onclick = (e) =>
+      withBusy(e.currentTarget, async () => {
+        const r = await api('/api/loans/repay-all', { method: 'POST', body: { ids: list.map((x) => x.id), payer } });
+        close();
+        toast(`已標記 ${r.marked} 筆，等${partner}確認`, 'ok');
         await refresh();
       });
   }

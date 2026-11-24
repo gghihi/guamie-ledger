@@ -10,6 +10,7 @@ import { notifyLine } from './lineApi.js';
  *  rejected        被否定（通知記帳的人）
  *  resubmitted     修改後重送（通知對方）
  *  repay_pending   還款待確認（通知另一方）
+ *  repay_pending_many 一次標記多筆已還款（通知另一方，只送一則）
  *  repay_confirmed 還款已確認（通知標記的人）
  *  repay_declined  對方表示還沒收到還款（通知標記的人）
  */
@@ -18,6 +19,7 @@ const TEMPLATES = {
   rejected: (a, l, note) => `❌ ${a} 否定了：${l}${note ? `（${note}）` : ''}`,
   resubmitted: (a, l) => `✏️ ${a} 修改後重送：${l}，等你確認`,
   repay_pending: (a, l) => `💰 ${a} 標記已還款：${l}，請確認`,
+  repay_pending_many: (a, l, note) => `💰 ${a} 一次標記了 ${note} 已還款，請確認`,
   repay_confirmed: (a, l) => `🎉 ${a} 確認收到還款：${l}`,
   repay_declined: (a, l, note) => `🤔 ${a} 表示還沒收到還款：${l}${note ? `（${note}）` : ''}`,
 };

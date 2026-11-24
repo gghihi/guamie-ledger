@@ -13,7 +13,7 @@ import { subscribePush, unsubscribePush, testPush } from './push.js';
 import { lineWebhook, createBindCode, lineStatus, unbindLine } from './line.js';
 import {
   approveLoan, approveAll, rejectLoan, withdrawLoan, resubmitLoan, deleteLoan, loanEvents,
-  requestRepay, confirmRepay, cancelRepay, declineRepay, setRepayer,
+  requestRepay, repayAll, confirmRepay, cancelRepay, declineRepay, setRepayer,
 } from './loanActions.js';
 
 async function health(request, env) {
@@ -76,6 +76,7 @@ const routes = {
   'GET /api/loans': listLoans,
   'POST /api/loans': createLoan,
   'POST /api/loans/approve-all': approveAll,
+  'POST /api/loans/repay-all': repayAll,
 
   // 統整
   'GET /api/summary': getSummary,

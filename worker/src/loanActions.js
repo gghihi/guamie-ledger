@@ -177,6 +177,54 @@ export async function requestRepay(request, env, { id }) {
   return json(request, env, { ok: true, loan: await getLoan(env, lc, id, user.id) });
 }
 
+/**
+ * POST /api/loans/repay-all：一次把多筆「未還」標記為已還款 → 全部變成「已還待確認」
+ *  body.ids   ：確認畫面上列出的那幾筆（只處理這些，避免確認後才冒出來的新帳也被一起標記）
+ *  body.payer ：'borrower'＝各筆由欠錢的人還（預設）；'lender'＝借出的人自己負擔
+ *  只會通知對方一次（不會一筆一則）
+ */
+export async function repayAll(request, env) {
+  const user = await requireUser(request, env);
+  const lc = await loadLedgerContext(env, user);
+  const body = await readJson(request).catch(() => ({}));
+  const ids = Array.isArray(body && body.ids) ? [...new Set(body.ids.map(String))].slice(0, 200) : [];
+  const payer = body && body.payer === 'lender' ? 'lender' : 'borrower';
+  if (!ids.length) throw new HttpError(400, '沒有要標記的紀錄', 'no_ids');
+
+  const marks = ids.map(() => '?').join(',');
+  const { results: rows } = await env.DB.prepare(
+    `SELECT * FROM loans WHERE ledger_id = ? AND status = 'unpaid' AND id IN (${marks})`,
+  ).bind(lc.ledgerId, ...ids).all();
+  if (rows.length !== ids.length) {
+    throw new HttpError(409, '有幾筆的狀態剛剛變了（可能對方已處理），請重新整理後再試', 'bad_state');
+  }
+
+  const now = nowIso();
+  const note = payer === 'lender' ? '全部已還（由借出的人自己負擔）' : '全部已還';
+  const statements = [];
+  for (const row of rows) {
+    const repaidBy = payer === 'lender' ? row.lender_id : row.borrower_id;
+    statements.push(
+      env.DB.prepare(
+        "UPDATE loans SET status = 'repay_pending', repay_requested_by = ?, repaid_by = ?, updated_at = ? WHERE id = ? AND ledger_id = ? AND status = 'unpaid'",
+      ).bind(user.id, repaidBy, now, row.id, lc.ledgerId),
+      logEvent(env, row, user.id, 'request_repay', 'unpaid', 'repay_pending', note),
+    );
+  }
+  await env.DB.batch(statements); // 全部一起成功或一起失敗
+
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+  if (rows.length === 1) {
+    notify(env, { type: 'repay_pending', toUserId: lc.partner.id, loanId: rows[0].id, actorId: user.id });
+  } else {
+    notify(env, {
+      type: 'repay_pending_many', toUserId: lc.partner.id, loanId: rows[0].id, actorId: user.id,
+      note: `${rows.length} 筆，合計 $${total.toLocaleString('en-US')}`,
+    });
+  }
+  return json(request, env, { ok: true, marked: rows.length, total });
+}
+
 /** POST /api/loans/:id/confirm-repay：另一方確認 → 已還，並通知標記的人 */
 export async function confirmRepay(request, env, { id }) {
   const user = await requireUser(request, env);

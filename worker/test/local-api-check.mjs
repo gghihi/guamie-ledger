@@ -184,6 +184,26 @@ const pr7 = await call('A', 'DELETE', `/api/loans/${loanId}`);
 const afterDel = await call('B', 'GET', '/api/loans');
 check('已還的紀錄任一方都能刪除（A 刪 B 記的）', pr7.status === 200 && !afterDel.data.loans.some((l) => l.id === loanId), pr7.data);
 
+// ───── 全部已還：一次把多筆未還標記為已還款 ─────
+const ra1 = await newLoan('B', { item: '全還一' });
+const ra2 = await newLoan('A', { item: '全還二' });
+await call('A', 'POST', `/api/loans/${ra1}/approve`);
+await call('B', 'POST', `/api/loans/${ra2}/approve`);
+const raBad = await call('A', 'POST', '/api/loans/repay-all', { ids: [ra1, mine] });
+const raBadAfter = await call('A', 'GET', '/api/loans');
+check('全部已還：清單裡有不是「未還」的就整批不做', raBad.status === 409
+  && raBadAfter.data.loans.find((l) => l.id === ra1).status === 'unpaid', raBad.data);
+const raC = await call('C', 'POST', '/api/loans/repay-all', { ids: [ra1] });
+check('全部已還：別的小窩不能標記', raC.status !== 200, raC.status);
+const raOk = await call('A', 'POST', '/api/loans/repay-all', { ids: [ra1, ra2], payer: 'lender' });
+const raAfter = (await call('A', 'GET', '/api/loans')).data.loans.filter((l) => [ra1, ra2].includes(l.id));
+check('全部已還：2 筆都變成「已還待確認」，還款人是借出的人', raOk.status === 200 && raOk.data.marked === 2
+  && raAfter.every((l) => l.status === 'repay_pending' && l.repayRequestedByMe), raOk.data);
+await call('B', 'POST', `/api/loans/${ra1}/confirm-repay`);
+await call('B', 'POST', `/api/loans/${ra2}/confirm-repay`);
+const raPaid = (await call('A', 'GET', '/api/loans')).data.loans.filter((l) => [ra1, ra2].includes(l.id));
+check('全部已還：確認後還款人記成借出的人', raPaid.every((l) => l.status === 'paid' && l.repaidBy && l.repaidBy.id === (l.lender.id)), raPaid);
+
 // ───── 第 8 階段補充：按錯「已還款」時可以退回 ─────
 const u1 = await newLoan('B', { item: '退回測試' });
 await call('A', 'POST', `/api/loans/${u1}/approve`);
