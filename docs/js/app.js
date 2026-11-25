@@ -8,6 +8,7 @@ import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
 import { mountCalculator } from './calculator.js';
+import { mountSoundSettings, playSound } from './sound.js';
 import { mountHistory } from './history.js';
 import { registerServiceWorker, mountPushToggle } from './pushui.js';
 import { mountLineBinding } from './lineui.js';
@@ -281,7 +282,7 @@ function userBar() {
     </header>`;
 }
 
-/** ⚙️ 設定：通知與 LINE 綁定 */
+/** ⚙️ 設定：通知、聲音與 LINE 綁定 */
 function openSettings() {
   const { el } = openModal(`
     <div class="settings-head">
@@ -289,8 +290,10 @@ function openSettings() {
       <button class="btn tiny ghost" data-close aria-label="關閉設定">✕ 關閉</button>
     </div>
     <div id="settings-push"></div>
+    <div id="settings-sound"></div>
     <div id="settings-line"></div>`);
   el.classList.add('settings');
+  mountSoundSettings(el.querySelector('#settings-sound'));
   mountPushToggle(el.querySelector('#settings-push'));
   mountLineBinding(el.querySelector('#settings-line'));
 }
@@ -370,7 +373,8 @@ async function syncNow() {
     if (memberKey(me) !== memberKey(state.me)) {
       await refresh();
     } else {
-      await state.list?.refresh({ quiet: true });
+      // 對方有新動作（清單變了）就「啵」一聲
+      if (await state.list?.refresh({ quiet: true })) playSound('pop');
     }
   } catch {
     /* 背景同步失敗就等下一次 */

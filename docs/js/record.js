@@ -4,6 +4,7 @@
 import { api } from './api.js';
 import { esc, toast, withBusy, money, todayTaipei, openModal } from './ui.js';
 import { canRecord, startRecording } from './voice.js';
+import { playSound, setRecording } from './sound.js';
 
 /**
  * 在 container 裡放入記帳區。
@@ -142,6 +143,7 @@ export function mountRecorder(container, ctx) {
         const who = loan.borrower.isMe ? `我欠${partner}` : `${partner}欠我`;
         say('bot', `記好了！${loan.item} ${money(loan.amount)}（${who}），等${partner}確認喔 🐑`);
         toast('已送出，等對方確認', 'ok');
+        playSound('send');
         draft = null;
         channel = 'web';
         renderCard();
@@ -213,6 +215,8 @@ export function mountRecorder(container, ctx) {
     setMicState('busy');
     try {
       const audio = await rec.stop();
+      setRecording(false);
+      playSound('recStop');
       const bubble = say('me', `🎤 語音（${audio.seconds} 秒）`);
       const result = await api('/api/parse-voice', {
         method: 'POST',
@@ -224,6 +228,7 @@ export function mountRecorder(container, ctx) {
     } catch (err) {
       toast(err.message, 'error');
     } finally {
+      setRecording(false); // 錄音失敗也要讓背景音樂回來
       setMicState('idle');
     }
   }
@@ -234,6 +239,8 @@ export function mountRecorder(container, ctx) {
       return showKeyboardMicHelp('這個瀏覽器不支援直接錄音（常見於 iPhone 較舊的 Safari）。');
     }
     try {
+      playSound('recStart');
+      setRecording(true); // 錄音時暫停背景音樂
       recording = await startRecording({
         onTick: (s) => recording && setMicState('rec', s),
         onAutoStop: () => {
@@ -246,6 +253,7 @@ export function mountRecorder(container, ctx) {
       say('bot', '我在聽～說完再按一下 ■ 停止 🐸');
     } catch (err) {
       recording = null;
+      setRecording(false);
       setMicState('idle');
       const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
       showKeyboardMicHelp(denied ? '沒有取得麥克風權限（可以到瀏覽器設定裡允許）。' : '這支手機現在無法錄音。');

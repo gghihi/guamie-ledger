@@ -3,6 +3,7 @@
 
 import { api } from './api.js';
 import { esc, money } from './ui.js';
+import { playSound } from './sound.js';
 
 const monthLabel = (m) => {
   const [y, mo] = m.split('-').map(Number);
@@ -11,8 +12,14 @@ const monthLabel = (m) => {
 
 export function mountSummary(container) {
   let month = ''; // '' 代表全部
+  let hadDebt = null; // 上次看到「全部」時有沒有欠款（null＝還沒看過）
 
   function render(s) {
+    // 從有欠款變成兩不相欠：放慶祝音效 🎉（只看「全部」，切月份不算）
+    if (!month) {
+      if (hadDebt && !s.net) playSound('celebrate');
+      hadDebt = Boolean(s.net);
+    }
     const options = ['<option value="">全部</option>']
       .concat(s.months.map((m) => `<option value="${m}" ${m === month ? 'selected' : ''}>${monthLabel(m)}</option>`))
       .join('');

@@ -2,6 +2,7 @@
 // 算好的結果可以按「帶入記帳金額」直接填進下面的記帳卡片。
 
 import { toast } from './ui.js';
+import { playSound } from './sound.js';
 
 const OPS = ['+', '−', '×', '÷'];
 
@@ -160,7 +161,10 @@ export function mountCalculator(container, { onUse } = {}) {
   }
 
   container.querySelectorAll('[data-k]').forEach((b) => {
-    b.onclick = () => press(b.dataset.k);
+    b.onclick = () => {
+      playSound('tap');
+      press(b.dataset.k);
+    };
   });
 
   container.querySelector('#calc-use')?.addEventListener('click', () => {

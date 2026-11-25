@@ -1,11 +1,14 @@
 // 共用的畫面小工具：安全文字、提示泡泡、確認畫面、處理中按鈕
 
+import { playSound } from './sound.js';
+
 /** 把文字轉成安全的 HTML（防止別人在暱稱或項目裡塞程式碼） */
 export function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 export function toast(message, type = 'info') {
+  if (type === 'error') playSound('error');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = message;

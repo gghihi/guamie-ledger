@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { esc, money, prettyDate, toast, confirmDialog, openModal, withBusy, todayTaipei } from './ui.js';
+import { playSound } from './sound.js';
 
 const TABS = [
   { key: 'pending', label: '待確認', statuses: ['pending', 'rejected'] },
@@ -129,6 +130,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}/approve`, { method: 'POST' });
       toast('已同意 🐸', 'ok');
+      playSound('approve');
       await refresh();
     });
   }
@@ -145,6 +147,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       const r = await api('/api/loans/approve-all', { method: 'POST' });
       toast(`已同意 ${r.approved} 筆`, 'ok');
+      playSound('approve');
       await refresh();
     });
   }
@@ -164,6 +167,7 @@ export function mountLoanList(container, ctx) {
         await api(`/api/loans/${l.id}/reject`, { method: 'POST', body: { reason: el.querySelector('#reason').value.trim() } });
         close();
         toast('已否定，會通知對方', 'ok');
+        playSound('soft');
         await refresh();
       });
   }
@@ -174,6 +178,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}/withdraw`, { method: 'POST' });
       toast('已撤回', 'ok');
+      playSound('soft');
       await refresh();
     });
   }
@@ -208,6 +213,7 @@ export function mountLoanList(container, ctx) {
         await api(`/api/loans/${l.id}/repay`, { method: 'POST', body: { repaidBy } });
         close();
         toast(`已標記，等${partner}確認`, 'ok');
+        playSound('coin');
         await refresh();
       });
   }
@@ -246,6 +252,7 @@ export function mountLoanList(container, ctx) {
         const r = await api('/api/loans/repay-all', { method: 'POST', body: { ids: list.map((x) => x.id), payer } });
         close();
         toast(`已標記 ${r.marked} 筆，等${partner}確認`, 'ok');
+        playSound('coin');
         await refresh();
       });
   }
@@ -260,6 +267,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}/confirm-repay`, { method: 'POST' });
       toast('還款完成 🎉', 'ok');
+      playSound('coin');
       await refresh();
     });
   }
@@ -275,6 +283,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}/cancel-repay`, { method: 'POST' });
       toast('已取消標記，回到未還', 'ok');
+      playSound('soft');
       await refresh();
     });
   }
@@ -294,6 +303,7 @@ export function mountLoanList(container, ctx) {
         await api(`/api/loans/${l.id}/decline-repay`, { method: 'POST', body: { reason: el.querySelector('#decline-reason').value.trim() } });
         close();
         toast('已退回，會通知對方', 'ok');
+        playSound('soft');
         await refresh();
       });
   }
@@ -304,6 +314,7 @@ export function mountLoanList(container, ctx) {
     await withBusy(btn, async () => {
       await api(`/api/loans/${l.id}`, { method: 'DELETE' });
       toast('已刪除', 'ok');
+      playSound('soft');
       await refresh();
     });
   }
@@ -348,6 +359,7 @@ export function mountLoanList(container, ctx) {
         await api(`/api/loans/${l.id}`, { method: 'PUT', body });
         close();
         toast(`已重送，等${partner}確認`, 'ok');
+        playSound('send');
         await refresh();
       });
   }
