@@ -7,6 +7,7 @@ import { esc, toast, confirmDialog, withBusy, openModal } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
 import { mountSummary } from './summary.js';
+import { mountCalculator } from './calculator.js';
 import { mountHistory } from './history.js';
 import { registerServiceWorker, mountPushToggle } from './pushui.js';
 import { mountLineBinding } from './lineui.js';
@@ -145,6 +146,7 @@ function renderHome() {
       </details>
       ${inviteBlock}
       <div id="summary"></div>
+      <div id="calculator"></div>
       <div id="recorder"></div>
       <div id="loan-list"></div>
     </div>
@@ -173,7 +175,8 @@ function renderHome() {
     const summary = mountSummary(document.getElementById('summary'));
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     state.list = list;
-    mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
+    const recorder = mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
+    mountCalculator(document.getElementById('calculator'), { onUse: (amount) => recorder.setAmount(amount) });
   } else {
     state.list = mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
   }

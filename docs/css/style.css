@@ -344,6 +344,34 @@ input:focus { border-color: var(--frog); }
 .sum-grid small { display: block; color: var(--muted); }
 .sum-grid b { font-size: 1.2rem; }
 
+/* ───── 計算機（統整下面，可收合） ───── */
+.calc summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.calc summary::-webkit-details-marker { display: none; }
+.calc summary h2 { margin: 0; }
+.calc-screen {
+  margin: 12px 0 10px; padding: 10px 14px; min-height: 92px;
+  background: #fff; border: 3px solid var(--sheep-shade); border-radius: 16px;
+  text-align: right; overflow-wrap: anywhere;
+}
+.calc-line { min-height: 1.2em; font-size: 0.85rem; color: var(--muted); }
+.calc-expr { font-size: 1.9rem; font-weight: 800; line-height: 1.3; }
+.calc-result { min-height: 1.3em; font-size: 1rem; color: var(--frog-dark); font-weight: 700; }
+.calc-result.err { color: var(--danger); }
+.calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.calc-keys .k {
+  font: inherit; font-size: 1.3rem; font-weight: 800; color: var(--text);
+  height: 52px; border-radius: 14px; cursor: pointer;
+  background: #fff; border: 3px solid var(--sheep-shade); box-shadow: 0 3px 0 var(--sheep-shade);
+}
+.calc-keys .k:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--sheep-shade); }
+.calc-keys .k.wide { grid-column: span 2; }
+.calc-keys .k.op { color: var(--frog-dark); background: #eaf6dc; border-color: #cfe8b4; box-shadow: 0 3px 0 #cfe8b4; }
+.calc-keys .k.clear, .calc-keys .k.back { color: var(--danger); font-size: 1.1rem; }
+.calc-keys .k.half { font-size: 1rem; line-height: 1.1; color: var(--wood-dark); background: var(--sheep-shade); }
+.calc-keys .k.half small { display: block; font-size: 0.75rem; font-weight: 600; }
+.calc-keys .k.eq { color: #fff; background: var(--frog); border-color: var(--frog-dark); box-shadow: 0 3px 0 var(--frog-dark); }
+#calc-use { margin-top: 12px; }
+
 /* ───── 第 10 階段：麥克風 ───── */
 .mic {
   flex: 0 0 auto;

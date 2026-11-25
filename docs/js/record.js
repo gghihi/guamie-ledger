@@ -251,4 +251,20 @@ export function mountRecorder(container, ctx) {
       showKeyboardMicHelp(denied ? '沒有取得麥克風權限（可以到瀏覽器設定裡允許）。' : '這支手機現在無法錄音。');
     }
   };
+
+  /** 計算機按「帶入記帳金額」：填進草稿的金額欄（沒有草稿就開一張新的） */
+  function setAmount(amount) {
+    if (draft) {
+      draft.amount = amount;
+    } else {
+      draft = { amount, direction: null, item: null, date: null };
+      source = 'manual';
+      channel = 'web';
+    }
+    say('bot', `金額 ${money(amount)} 幫你填好了！其他欄位可以直接點選，或打字告訴我（例如「昨天幫${partner}付晚餐」）🐸`);
+    renderCard();
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  return { setAmount };
 }
