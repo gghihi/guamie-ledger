@@ -3,7 +3,7 @@
 //
 // 規則：
 // - 瀏覽器不准網頁自己出聲，要等使用者第一次點畫面後才開始（背景音樂也是）。
-// - 設定（音效開關、音樂開關、音量、計算機按鍵聲）只存在這支手機。
+// - 設定（音效開關、音樂開關、音量、按鍵聲）只存在這支手機。
 // - 切到別的 APP 或關掉螢幕時，聲音全部暫停；回來再繼續。
 // - 錄音時暫停背景音樂，避免被麥克風錄進去。
 
@@ -169,15 +169,35 @@ const SFX = {
   tap(t) {
     tone(t, 1300, 0.035, { vol: 0.12, attack: 0.002 });
   },
+  /** 圓角大按鈕：軟軟的「啵」，像按下 Q 彈的按鈕 */
+  press(t) {
+    tone(t, 700, 0.08, { type: 'triangle', vol: 0.22, slide: 480, attack: 0.003 });
+    tone(t, 1400, 0.03, { vol: 0.05, attack: 0.002 });
+  },
 };
 
 /** 播放音效，例如 playSound('coin') */
 export function playSound(name) {
   if (!settings.sfx || !SFX[name]) return;
-  if (name === 'tap' && !settings.keys) return;
-  if (!ensureContext() || ctx.state !== 'running') return;
-  SFX[name](ctx.currentTime + 0.01);
+  if ((name === 'tap' || name === 'press') && !settings.keys) return;
+  if (!ensureContext()) return;
+  if (ctx.state === 'running') {
+    SFX[name](ctx.currentTime + 0.01);
+  } else if (ctx.state === 'suspended' && document.visibilityState === 'visible') {
+    // 第一次點畫面時聲音引擎還在啟動，等它好了再播
+    ctx.resume().then(() => SFX[name](ctx.currentTime + 0.01)).catch(() => {});
+  }
 }
+
+// 所有圓角大按鈕（.btn，例如「用 Google 帳號登入」「確認送出」「同意」）按下時都有「啵」聲
+document.addEventListener(
+  'click',
+  (e) => {
+    const btn = e.target.closest?.('.btn');
+    if (btn && !btn.disabled) playSound('press');
+  },
+  { capture: true },
+);
 
 // ───────── 背景音樂：可愛的木琴小曲（每分鐘 100 拍、16 小節約 38 秒，一直重播） ─────────
 
@@ -320,7 +340,7 @@ export function mountSoundSettings(container) {
       <h2>🔊 聲音</h2>
       ${sw('snd-sfx', '音效', s.sfx, '記帳、同意、還款時的小聲音')}
       ${sw('snd-music', '背景音樂', s.music, '可愛的木琴小曲')}
-      ${sw('snd-keys', '計算機按鍵聲', s.keys)}
+      ${sw('snd-keys', '按鍵聲', s.keys, '按鈕和計算機按下時的小聲音')}
       <label class="volume-row">音量
         <input type="range" id="snd-volume" min="0" max="1" step="0.05" value="${s.volume}" aria-label="音量" />
       </label>
