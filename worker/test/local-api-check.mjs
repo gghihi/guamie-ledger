@@ -258,24 +258,6 @@ check('錯誤的月份格式 → 拒絕', sumBad.status === 400, sumBad.data);
 const sumC = await call('C', 'GET', '/api/summary');
 check('只有一個人的小窩沒有統整', sumC.status === 409, sumC.data);
 
-// ───── 直接記入已還：記帳時勾「已經還了」，不用對方確認 ─────
-const sumBeforePaid = (await call('A', 'GET', '/api/summary')).data;
-const dp1 = await call('A', 'POST', '/api/loans', { amount: 777, direction: 'me_lent', item: '已還測試', date: today, alreadyPaid: true, repaidBy: 'lender' });
-check('直接記入已還 → 狀態就是「已還」、有還款時間、還款人是自己（借出的人）', dp1.status === 201 && dp1.data.loan.status === 'paid'
-  && dp1.data.loan.paidAt && dp1.data.loan.repaidBy?.isMe === true, dp1.data);
-const dp2 = await call('A', 'POST', '/api/loans', { amount: 50, direction: 'me_lent', item: '已還測試2', date: today, alreadyPaid: true });
-check('沒選還款人 → 預設欠錢的人（咩咩）', dp2.data.loan.status === 'paid' && dp2.data.loan.repaidBy?.isMe === false, dp2.data);
-const dp3 = await call('A', 'POST', '/api/loans', { amount: 60, direction: 'me_lent', item: '不是 true', date: today, alreadyPaid: 'true' });
-check('alreadyPaid 不是 true（例如文字 "true"）→ 照舊進「待確認」', dp3.data.loan.status === 'pending', dp3.data);
-const sumAfterPaid = (await call('A', 'GET', '/api/summary')).data;
-check('直接記入已還的帳不算進統整', sumAfterPaid.me.owes === sumBeforePaid.me.owes && sumAfterPaid.partner.owes === sumBeforePaid.partner.owes, sumAfterPaid);
-const dpEv = await call('B', 'GET', `/api/loans/${dp1.data.loan.id}/events`);
-check('對方也看得到，狀態紀錄寫著「直接記入已還」', dpEv.status === 200 && dpEv.data.events.length === 1
-  && dpEv.data.events[0].action === 'create' && dpEv.data.events[0].note === '直接記入已還', dpEv.data);
-const dpApprove = await call('B', 'POST', `/api/loans/${dp1.data.loan.id}/approve`);
-check('已還的帳不能再按同意', dpApprove.status === 409, dpApprove.data);
-await call('A', 'POST', `/api/loans/${dp3.data.loan.id}/withdraw`);
-
 // ───── 第 10 階段：語音 ─────
 const v1 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/webm', base64: 'AAAA' } });
 check('語音：不接受 WAV 以外的格式', v1.status === 400, v1.data);

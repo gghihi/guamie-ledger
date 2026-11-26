@@ -12,7 +12,7 @@ import { playSound, setRecording } from './sound.js';
  */
 export function mountRecorder(container, ctx) {
   const partner = ctx.partner.nickname;
-  let draft = null;        // 目前的草稿 { amount, direction, item, date, alreadyPaid, repaidBy }
+  let draft = null;        // 目前的草稿 { amount, direction, item, date }
   let source = 'rules';    // 解析來源
   let channel = 'web';     // 這筆是用打字（web）還是語音（voice）
   let recording = null;    // 錄音中的控制器
@@ -56,20 +56,6 @@ export function mountRecorder(container, ctx) {
     return m;
   };
 
-  /** 「已經還了」時：誰還的錢？（歷史紀錄的花費會算給他），預設欠錢的人 */
-  function payerField() {
-    const borrower = draft.direction === 'me_lent' ? partner : draft.direction === 'partner_lent' ? '我' : '欠錢的人';
-    const lender = draft.direction === 'me_lent' ? '我' : draft.direction === 'partner_lent' ? partner : '借出的人';
-    const known = Boolean(draft.direction);
-    return `
-      <div class="payer-field">誰還的錢？<small class="hint">（歷史紀錄的花費會算給他）</small>
-        <div class="seg">
-          <button type="button" data-payer="borrower" class="${draft.repaidBy !== 'lender' ? 'on' : ''}">${esc(borrower)}<small>${known ? '欠錢的人' : '一般情況'}</small></button>
-          <button type="button" data-payer="lender" class="${draft.repaidBy === 'lender' ? 'on' : ''}">${esc(lender)}<small>借出的人自己負擔</small></button>
-        </div>
-      </div>`;
-  }
-
   function renderCard() {
     if (!draft) {
       cardBox.innerHTML = '';
@@ -101,18 +87,11 @@ export function mountRecorder(container, ctx) {
             <button type="button" data-date="${todayTaipei(-2)}">前天</button>
           </div>
         </div>
-        <div class="field">還了嗎？
-          <div class="seg">
-            <button type="button" data-paid="0" class="${draft.alreadyPaid ? '' : 'on'}">還沒還<small>等${esc(partner)}同意</small></button>
-            <button type="button" data-paid="1" class="${draft.alreadyPaid ? 'on' : ''}">已經還了<small>直接記入已還</small></button>
-          </div>
-          ${draft.alreadyPaid ? payerField() : ''}
-        </div>
         <div class="row">
           <button type="button" class="btn ghost" id="d-cancel">不記了</button>
           <button type="button" class="btn" id="d-submit" ${missing.length ? 'disabled' : ''}>確認送出</button>
         </div>
-        ${missing.length ? '<p class="hint center-text">紅色的欄位還沒填好喔</p>' : draft.alreadyPaid ? `<p class="hint center-text">送出後直接記入「已還」，不用等${esc(partner)}同意（會通知${esc(partner)}）</p>` : `<p class="hint center-text">送出後要等${esc(partner)}同意才會算進統整</p>`}
+        ${missing.length ? '<p class="hint center-text">紅色的欄位還沒填好喔</p>' : `<p class="hint center-text">送出後要等${esc(partner)}同意才會算進統整</p>`}
       </div>`;
 
     // 修改欄位時同步更新草稿（不重畫整張卡，避免輸入時跳掉）
@@ -142,18 +121,6 @@ export function mountRecorder(container, ctx) {
         renderCard();
       };
     });
-    cardBox.querySelectorAll('[data-paid]').forEach((b) => {
-      b.onclick = () => {
-        draft.alreadyPaid = b.dataset.paid === '1';
-        renderCard();
-      };
-    });
-    cardBox.querySelectorAll('[data-payer]').forEach((b) => {
-      b.onclick = () => {
-        draft.repaidBy = b.dataset.payer;
-        renderCard();
-      };
-    });
     cardBox.querySelectorAll('[data-date]').forEach((b) => {
       b.onclick = () => {
         draft.date = b.dataset.date;
@@ -174,15 +141,9 @@ export function mountRecorder(container, ctx) {
           body: { ...draft, parseSource: source, inputChannel: channel },
         });
         const who = loan.borrower.isMe ? `我欠${partner}` : `${partner}欠我`;
-        if (loan.status === 'paid') {
-          say('bot', `記好了！${loan.item} ${money(loan.amount)}（${who}）已經直接記入「已還」💰`);
-          toast('已記入已還', 'ok');
-          playSound('coin');
-        } else {
-          say('bot', `記好了！${loan.item} ${money(loan.amount)}（${who}），等${partner}確認喔 🐑`);
-          toast('已送出，等對方確認', 'ok');
-          playSound('send');
-        }
+        say('bot', `記好了！${loan.item} ${money(loan.amount)}（${who}），等${partner}確認喔 🐑`);
+        toast('已送出，等對方確認', 'ok');
+        playSound('send');
         draft = null;
         channel = 'web';
         renderCard();
@@ -206,17 +167,9 @@ export function mountRecorder(container, ctx) {
 
   /** 顯示解析結果（打字和語音共用） */
   function handleResult(result) {
-    const wasPaid = Boolean(draft?.alreadyPaid);
-    draft = {
-      ...result.fields,
-      alreadyPaid: wasPaid || result.alreadyPaid === true,
-      repaidBy: draft?.repaidBy || 'borrower',
-    };
+    draft = result.fields;
     source = result.source;
     say('bot', result.question || '幫你整理好了，確認沒問題就按「確認送出」！');
-    if (result.alreadyPaid && !wasPaid) {
-      say('bot', '聽起來這筆已經還了，幫你切到「已經還了」，送出後會直接記入已還 💰');
-    }
     // Gemini 無法使用時的小提示（記帳流程照常）
     if (result.notice) {
       const chip = document.createElement('div');
@@ -312,7 +265,7 @@ export function mountRecorder(container, ctx) {
     if (draft) {
       draft.amount = amount;
     } else {
-      draft = { amount, direction: null, item: null, date: null, alreadyPaid: false, repaidBy: 'borrower' };
+      draft = { amount, direction: null, item: null, date: null };
       source = 'manual';
       channel = 'web';
     }

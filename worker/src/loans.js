@@ -62,24 +62,19 @@ export async function parseVoice(request, env) {
   return json(request, env, { ok: true, ...result });
 }
 
-/** POST /api/loans：確認後送出一筆借款（進入「待確認」；勾選「已經還了」時直接進「已還」） */
+/** POST /api/loans：確認後送出一筆借款（進入「待確認」） */
 export async function createLoan(request, env) {
   const user = await requireUser(request, env);
   const lc = await loadLedgerContext(env, user);
   const body = await readJson(request);
   const parseSource = ['gemini', 'rules', 'manual'].includes(body.parseSource) ? body.parseSource : 'manual';
   const inputChannel = ['web', 'voice'].includes(body.inputChannel) ? body.inputChannel : 'web';
-  // 直接記入已還（只有網頁有；LINE 記帳照舊走待確認）
-  const paid = body.alreadyPaid === true ? { repaidBy: body.repaidBy === 'lender' ? 'lender' : 'borrower' } : null;
-  const loan = await createLoanCore(env, user, lc, body, parseSource, inputChannel, { paid });
+  const loan = await createLoanCore(env, user, lc, body, parseSource, inputChannel);
   return json(request, env, { ok: true, loan }, 201);
 }
 
-/**
- * 新增借款的核心邏輯（網頁和 LINE 共用）
- * options.paid = { repaidBy: 'borrower' | 'lender' } 時，這筆直接存成「已還」，不用對方確認，只通知對方。
- */
-export async function createLoanCore(env, user, lc, draft, parseSource, inputChannel, { paid = null } = {}) {
+/** 新增借款的核心邏輯（網頁和 LINE 共用） */
+export async function createLoanCore(env, user, lc, draft, parseSource, inputChannel) {
   // 後端再檢查一次，不相信前端送來的資料
   const fields = sanitizeDraft(draft);
   const missing = missingFields(fields);
@@ -95,26 +90,18 @@ export async function createLoanCore(env, user, lc, draft, parseSource, inputCha
   // 依這本帳目前的規則自動分類；之後改規則不會改動這筆（除非使用者要求重新分類）
   const category = await classifyForLedger(env, lc.ledgerId, fields.item);
 
-  // 直接記入已還：狀態是 paid，記下誰還的錢（歷史紀錄的花費算給他）與時間
-  const status = paid ? 'paid' : 'pending';
-  const repaidBy = paid ? (paid.repaidBy === 'lender' ? lenderId : borrowerId) : null;
-  const now = paid ? new Date().toISOString() : null;
-
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO loans (id, ledger_id, lender_id, borrower_id, amount, item, loan_date, created_by, parse_source, input_channel, category,
-                          status, repaid_by, approved_at, paid_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, lc.ledgerId, lenderId, borrowerId, fields.amount, fields.item, fields.date, user.id, parseSource, inputChannel, category,
-      status, repaidBy, now, now),
+      `INSERT INTO loans (id, ledger_id, lender_id, borrower_id, amount, item, loan_date, created_by, parse_source, input_channel, category)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, lc.ledgerId, lenderId, borrowerId, fields.amount, fields.item, fields.date, user.id, parseSource, inputChannel, category),
     env.DB.prepare(
-      `INSERT INTO loan_events (loan_id, ledger_id, actor_id, action, from_status, to_status, note, snapshot)
-       VALUES (?, ?, ?, 'create', NULL, ?, ?, ?)`,
-    ).bind(id, lc.ledgerId, user.id, status, paid ? '直接記入已還' : null,
-      JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId, ...(paid ? { repaidBy } : {}) })),
+      `INSERT INTO loan_events (loan_id, ledger_id, actor_id, action, from_status, to_status, snapshot)
+       VALUES (?, ?, ?, 'create', NULL, 'pending', ?)`,
+    ).bind(id, lc.ledgerId, user.id, JSON.stringify({ amount: fields.amount, item: fields.item, date: fields.date, lenderId, borrowerId })),
   ]);
 
-  notify(env, { type: paid ? 'created_paid' : 'new_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
+  notify(env, { type: 'new_pending', toUserId: lc.partner.id, loanId: id, actorId: user.id });
   return getLoan(env, lc, id, user.id);
 }
 

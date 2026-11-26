@@ -500,7 +500,3 @@ input:focus { border-color: var(--frog); }
 .switch-row input[type="checkbox"]:checked { background: var(--frog); border-color: var(--frog-dark); }
 .switch-row input[type="checkbox"]:checked::after { transform: translateX(22px); }
 .volume-row input[type="range"] { padding: 0; border: none; background: none; accent-color: var(--frog); height: 32px; }
-
-/* 記帳卡片：已經還了 → 誰還的錢 */
-.payer-field { margin-top: 10px; font-weight: 600; font-size: 0.95rem; }
-.payer-field small { font-weight: 400; }

@@ -7,7 +7,6 @@ import { notifyLine } from './lineApi.js';
 /**
  * 通知種類：
  *  new_pending     有新借款待確認（通知對方）
- *  created_paid    直接記入已還的帳（通知對方，不用確認）
  *  rejected        被否定（通知記帳的人）
  *  resubmitted     修改後重送（通知對方）
  *  repay_pending   還款待確認（通知另一方）
@@ -17,7 +16,6 @@ import { notifyLine } from './lineApi.js';
  */
 const TEMPLATES = {
   new_pending: (a, l) => `📒 ${a} 記了一筆帳：${l}，等你確認`,
-  created_paid: (a, l) => `💰 ${a} 記了一筆已經還清的帳：${l}（直接記入已還）`,
   rejected: (a, l, note) => `❌ ${a} 否定了：${l}${note ? `（${note}）` : ''}`,
   resubmitted: (a, l) => `✏️ ${a} 修改後重送：${l}，等你確認`,
   repay_pending: (a, l) => `💰 ${a} 標記已還款：${l}，請確認`,
