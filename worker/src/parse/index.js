@@ -1,7 +1,7 @@
 // 記帳語意解析的總入口
 // 先請 Gemini 理解；Gemini 無法使用（沒金鑰、額度用完、錯誤、逾時）時，自動改用規則解析。
 
-import { parseByRules } from './rules.js';
+import { parseByRules, findPaid } from './rules.js';
 import { todayIn, isValidYmd } from './dates.js';
 import { parseWithGemini, GeminiError } from './gemini.js';
 
@@ -71,7 +71,8 @@ function merge(before, parsed, text) {
 /**
  * 解析一句話（或一段錄音），並和之前的草稿合併。
  * ctx = { timeZone, me: { nickname, displayName }, partner: { nickname, displayName } }
- * 回傳 { fields, missing, question, source, notice, transcript }
+ * 回傳 { fields, missing, question, source, notice, transcript, alreadyPaid }
+ * alreadyPaid：這句話有說「已經還了」（網頁會自動打開「已經還了」開關；LINE 不使用）
  */
 export async function analyze(input, draft, ctx, env = {}, fetchImpl) {
   const today = todayIn(ctx.timeZone);
@@ -133,6 +134,8 @@ export async function analyze(input, draft, ctx, env = {}, fetchImpl) {
 
   const fields = merge(before, parsed, text);
   const missing = missingFields(fields);
+  // Gemini 說已還，或句子裡有明確的「已經還了」字眼
+  const alreadyPaid = parsed.alreadyPaid === true || Boolean(findPaid(transcript || text));
   return {
     fields,
     missing,
@@ -141,6 +144,7 @@ export async function analyze(input, draft, ctx, env = {}, fetchImpl) {
     notice,
     transcript,
     today,
+    alreadyPaid,
   };
 }
 

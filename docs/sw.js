@@ -2,7 +2,7 @@
 // 負責：接收推播並顯示通知、點通知時打開 APP。
 // 不快取帳目資料（避免看到舊的帳），只在沒網路時顯示提示頁。
 
-const VERSION = 'v16-2';
+const VERSION = 'v16-3';
 const OFFLINE_URL = './offline.html';
 
 self.addEventListener('install', (event) => {

@@ -125,15 +125,34 @@ function cleanItem(rest) {
   return item.slice(0, 30);
 }
 
+// 「已經還了」這類說法（直接記入已還）；「還沒還」「沒還」不算
+const PAID = /(?:已經|已经|已|都)(?:還|还|結|结)(?:清|完|過|过)?了?|(?:還|还)(?:清|完)?了|(?:結|结)清了?/;
+const NOT_PAID = /(?:還|还)(?:沒|没|未)|(?:沒|没|未)(?:有)?(?:還|还)/;
+
+/** 找出「已經還了」的說法，回傳 { text } 或 null */
+export function findPaid(text) {
+  const s = String(text ?? '').normalize('NFKC');
+  if (NOT_PAID.test(s)) return null;
+  const m = PAID.exec(s);
+  return m ? { text: m[0] } : null;
+}
+
 /**
  * 解析一句話。
  * ctx = { today: 'YYYY-MM-DD', names: { me: [...], partner: [...] } }
- * 回傳 { amount, direction, item, date }，看不懂的欄位為 null。
+ * 回傳 { amount, direction, item, date }，看不懂的欄位為 null；句子說「已經還了」時多一個 alreadyPaid: true。
  */
 export function parseByRules(input, ctx) {
   let text = String(input ?? '').normalize('NFKC').trim();
   const result = { amount: null, direction: null, item: null, date: null };
   if (!text) return result;
+
+  // 先挖掉「已經還了」，免得被當成項目
+  const paid = findPaid(text);
+  if (paid) {
+    result.alreadyPaid = true;
+    text = text.replace(paid.text, ' ');
+  }
 
   // 依序找出並「挖掉」日期 → 方向 → 金額，剩下的字就是項目
   const date = findDate(text, ctx.today);

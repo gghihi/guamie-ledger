@@ -28,6 +28,7 @@ const RESPONSE_SCHEMA = {
     item: { type: 'STRING', nullable: true, description: '簡短項目名稱，例如「晚餐」「計程車」，最多 15 字；不確定就 null' },
     date: { type: 'STRING', nullable: true, description: 'YYYY-MM-DD；句子沒提到日期就 null' },
     transcript: { type: 'STRING', nullable: true, description: '若輸入是語音，填入聽到的文字；文字輸入則 null' },
+    alreadyPaid: { type: 'BOOLEAN', nullable: true, description: '句子明確說這筆錢已經還了／結清了就 true，否則 false' },
   },
   required: ['isLoan', 'amount', 'direction', 'item', 'date'],
 };
@@ -44,10 +45,11 @@ function systemPrompt(ctx) {
     '規則：',
     '1. 只擷取句子裡明確提到的資訊。不確定的欄位一律填 null 或 unknown，絕對不要猜金額或誰欠誰。',
     '2. direction：使用者幫對方付錢、借錢給對方、對方欠使用者 → me_lent；對方幫使用者付錢、使用者向對方借、使用者欠對方 → partner_lent。',
-    '3. 只有明確是「請客」「送禮」「AA 已結清」或與金錢無關的句子，isLoan 才填 false。資訊不完整的句子（例如只有「晚餐三百五」、只有「今天」、只有「咩咩欠我」）仍是借款的一部分，isLoan 填 true，缺的欄位填 null。',
+    '3. 只有明確是「請客」「送禮」或與金錢無關的句子，isLoan 才填 false。資訊不完整的句子（例如只有「晚餐三百五」、只有「今天」、只有「咩咩欠我」）仍是借款的一部分，isLoan 填 true，缺的欄位填 null。',
     '4. 「今天、昨天、上週五、18號」等相對日期，請依今天換算成 YYYY-MM-DD；沒提到日期就填 null，不要自動填今天。只說「上禮拜」「前幾天」「最近」等無法確定是哪一天的說法，也填 null。',
     '5. 金額換成新台幣整數，例如「三百五」→350、「1.5萬」→15000。若有多個數字且無法判斷哪個是金額，填 null。',
-    '6. item 只寫簡短名詞，不要包含人名、金額、日期。',
+    '6. item 只寫簡短名詞，不要包含人名、金額、日期，也不要包含「已經還了」這類字。',
+    '7. alreadyPaid：句子明確說這筆已經還了、還清了、結清了（例如「昨天幫咩咩付晚餐 350，她已經還我了」）才填 true；說「還沒還」或沒提到就填 false。這種句子仍然是借款，isLoan 填 true。',
   ].join('\n');
 }
 
@@ -159,5 +161,5 @@ export function sanitizeGeminiOutput(out, today) {
   const item = typeof out.item === 'string' && out.item.trim() ? out.item.trim().slice(0, 30) : null;
   const date = isValidYmd(out.date) && out.date <= today ? out.date : null;
   const transcript = typeof out.transcript === 'string' ? out.transcript.trim().slice(0, 200) : null;
-  return { isLoan: out.isLoan !== false, amount, direction, item, date, transcript };
+  return { isLoan: out.isLoan !== false, amount, direction, item, date, transcript, alreadyPaid: out.alreadyPaid === true };
 }

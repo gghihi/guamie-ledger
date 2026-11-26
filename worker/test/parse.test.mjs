@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findDate, todayIn } from '../src/parse/dates.js';
-import { parseByRules, chineseToNumber, findAmount } from '../src/parse/rules.js';
+import { parseByRules, chineseToNumber, findAmount, findPaid } from '../src/parse/rules.js';
 
 // 假設今天是 2026-11-19（星期四）
 const TODAY = '2026-11-19';
@@ -96,4 +96,19 @@ test('看不懂的句子：全部留空，不亂猜', () => {
 
 test('請客不算借錢：「咩咩請我吃飯 500」方向留空', () => {
   assert.equal(parseByRules('咩咩請我吃飯 500', ctx).direction, null);
+});
+
+test('「已經還了」：直接記入已還的說法', () => {
+  assert.ok(findPaid('她已經還我了'));
+  assert.ok(findPaid('咖啡 120 還清了'));
+  assert.ok(findPaid('已結清'));
+  assert.equal(findPaid('晚餐 350 還沒還'), null);
+  assert.equal(findPaid('她沒有還我'), null);
+  assert.equal(findPaid('咩咩已付晚餐 300'), null); // 「已付」是代墊，不是還款
+  assert.equal(findPaid('我還要付房租'), null);
+  const r = parseByRules('昨天幫咩咩付晚餐 350，她已經還我了', ctx);
+  assert.equal(r.alreadyPaid, true);
+  assert.equal(r.item, '晚餐');
+  assert.equal(r.amount, 350);
+  assert.equal(parseByRules('昨天幫咩咩付晚餐 350', ctx).alreadyPaid, undefined);
 });

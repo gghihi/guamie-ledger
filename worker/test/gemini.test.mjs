@@ -171,3 +171,17 @@ test('檢查 Gemini 的回答：負數、未來日期、錯誤方向都會被清
   const out = sanitizeGeminiOutput({ isLoan: true, amount: -5, direction: 'whatever', item: '  ', date: '2999-01-01' }, today);
   assert.deepEqual({ amount: out.amount, direction: out.direction, item: out.item, date: out.date }, { amount: null, direction: null, item: null, date: null });
 });
+
+test('已經還了：Gemini 或句子字眼任一說已還，就回傳 alreadyPaid（不放進 fields，LINE 不受影響）', async () => {
+  const r1 = await analyze('昨天幫咩咩付晚餐 350 她還我了', null, ctx, env,
+    fakeGemini({ isLoan: true, amount: 350, direction: 'me_lent', item: '晚餐', date: null, alreadyPaid: true }));
+  assert.equal(r1.alreadyPaid, true);
+  assert.equal('alreadyPaid' in r1.fields, false);
+  const r2 = await analyze('幫咩咩付晚餐 350 已結清', null, ctx, env,
+    fakeGemini({ isLoan: true, amount: 350, direction: 'me_lent', item: '晚餐', date: null }));
+  assert.equal(r2.alreadyPaid, true);
+  const r3 = await analyze('幫咩咩付晚餐 350', null, ctx, env,
+    fakeGemini({ isLoan: true, amount: 350, direction: 'me_lent', item: '晚餐', date: null, alreadyPaid: false }));
+  assert.equal(r3.alreadyPaid, false);
+  assert.equal(sanitizeGeminiOutput({ isLoan: true, alreadyPaid: 'yes' }, today).alreadyPaid, false);
+});
