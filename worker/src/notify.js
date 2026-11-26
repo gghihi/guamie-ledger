@@ -13,6 +13,7 @@ import { notifyLine } from './lineApi.js';
  *  repay_pending_many 一次標記多筆已還款（通知另一方，只送一則）
  *  repay_confirmed 還款已確認（通知標記的人）
  *  repay_declined  對方表示還沒收到還款（通知標記的人）
+ *  expense_created 直接記了一筆花費（通知對方，不用確認）
  */
 const TEMPLATES = {
   new_pending: (a, l) => `📒 ${a} 記了一筆帳：${l}，等你確認`,
@@ -22,10 +23,12 @@ const TEMPLATES = {
   repay_pending_many: (a, l, note) => `💰 ${a} 一次標記了 ${note} 已還款，請確認`,
   repay_confirmed: (a, l) => `🎉 ${a} 確認收到還款：${l}`,
   repay_declined: (a, l, note) => `🤔 ${a} 表示還沒收到還款：${l}${note ? `（${note}）` : ''}`,
+  expense_created: (a, l, note) => `🧾 ${a} 記了一筆花費：${l}（${note}付的）`,
 };
 
 /** 組出通知文字（查詢借款與操作者暱稱） */
-export async function buildMessage(env, { type, loanId, actorId, note }) {
+export async function buildMessage(env, { type, loanId, expenseId, actorId, note }) {
+  if (expenseId) return buildExpenseMessage(env, { type, expenseId, actorId });
   const row = await env.DB.prepare(
     `SELECT l.item, l.amount, m.nickname AS actor
        FROM loans l LEFT JOIN ledger_members m ON m.ledger_id = l.ledger_id AND m.user_id = ?
@@ -41,16 +44,35 @@ export async function buildMessage(env, { type, loanId, actorId, note }) {
   };
 }
 
+/** 直接記帳的通知文字（例如「🧾 呱呱 記了一筆花費：買菜 $500（咩咩付的）」） */
+async function buildExpenseMessage(env, { type, expenseId, actorId }) {
+  const row = await env.DB.prepare(
+    `SELECT e.item, e.amount, m.nickname AS actor, p.nickname AS payer
+       FROM expenses e
+       LEFT JOIN ledger_members m ON m.ledger_id = e.ledger_id AND m.user_id = ?
+       LEFT JOIN ledger_members p ON p.ledger_id = e.ledger_id AND p.user_id = e.payer_id
+      WHERE e.id = ?`,
+  ).bind(actorId, expenseId).first();
+  if (!row || !TEMPLATES[type]) return null;
+  const text = `${row.item} $${Number(row.amount).toLocaleString('en-US')}`;
+  return {
+    title: '呱咩小窩帳',
+    body: TEMPLATES[type](row.actor || '對方', text, row.payer || '對方'),
+    url: env.FRONTEND_URL,
+    tag: `expense-${expenseId}`,
+  };
+}
+
 /** 送出通知；在 Cloudflare 上會交給背景執行，不拖慢畫面 */
-export function notify(env, { type, toUserId, loanId, actorId, note = null }) {
+export function notify(env, { type, toUserId, loanId, expenseId, actorId, note = null }) {
   const job = (async () => {
     try {
-      const message = await buildMessage(env, { type, loanId, actorId, note });
+      const message = await buildMessage(env, { type, loanId, expenseId, actorId, note });
       if (!message) return;
       // 網頁推播與 LINE 同時送出，確保送達（LINE 超過每月免費額度時自動略過）
       await Promise.all([
         pushToUser(env, toUserId, message),
-        notifyLine(env, { toUserId, type, loanId, body: message.body }),
+        notifyLine(env, { toUserId, type, loanId: loanId || expenseId, body: message.body }),
       ]);
     } catch (err) {
       console.warn('通知失敗', type, err?.message);

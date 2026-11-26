@@ -6,6 +6,7 @@ import { googleStart, googleCallback, exchangeLoginCode, logout } from './auth.j
 import { getMe, ackPrivacy, updateNickname, createLedger, regenerateInvite, joinLedger, leaveLedger } from './ledgers.js';
 import { parseText, parseVoice, createLoan, listLoans } from './loans.js';
 import { getSummary } from './summary.js';
+import { listExpenses, createExpense, updateExpense, deleteExpense } from './expenses.js';
 import { historyPeriods, historySummary, historyUnspecified } from './history.js';
 import { getCategories, updateCategories, recalculateCategories } from './categoryApi.js';
 import { geminiTransport } from './parse/gemini.js';
@@ -78,6 +79,10 @@ const routes = {
   'POST /api/loans/approve-all': approveAll,
   'POST /api/loans/repay-all': repayAll,
 
+  // 直接記帳（花費）
+  'GET /api/expenses': listExpenses,
+  'POST /api/expenses': createExpense,
+
   // 統整
   'GET /api/summary': getSummary,
 
@@ -117,6 +122,8 @@ const paramRoutes = [
   ['POST', new RegExp(`^/api/loans/${ID}/cancel-repay$`), cancelRepay],
   ['POST', new RegExp(`^/api/loans/${ID}/decline-repay$`), declineRepay],
   ['POST', new RegExp(`^/api/loans/${ID}/repayer$`), setRepayer],
+  ['PUT', new RegExp(`^/api/expenses/${ID}$`), updateExpense],
+  ['DELETE', new RegExp(`^/api/expenses/${ID}$`), deleteExpense],
 ];
 
 function findRoute(method, pathname) {

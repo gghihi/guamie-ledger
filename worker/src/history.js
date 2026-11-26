@@ -1,6 +1,7 @@
 // 歷史紀錄統計（H3）
 // 規則（使用者指定）：
-//  ・花費只計入「已還」紀錄（待確認、未還、已還待確認都不算）
+//  ・花費只計入「已還」紀錄（待確認、未還、已還待確認都不算），加上「直接記帳」的花費
+//  ・直接記帳的花費算給付錢的人（payer_id），月份依記帳日期
 //  ・花費歸屬於「實際還款人」（repaid_by）；沒有還款人＝「未指定」，仍計入總花費
 //  ・月份依「借款日期」所在月份歸類
 //  ・分類用記帳當下存下來的 category（改規則不影響歷史，除非使用者要求重算）
@@ -23,9 +24,10 @@ function readPeriod(request, { required }) {
   if (month && !MONTH_RE.test(month)) throw new HttpError(400, '月份格式不正確（例如 2026-11）', 'bad_period');
   if (year && !YEAR_RE.test(year)) throw new HttpError(400, '年份格式不正確（例如 2026）', 'bad_period');
   if (required && !month && !year) throw new HttpError(400, '請選擇月份或年份', 'bad_period');
-  if (month) return { type: 'month', value: month, where: 'substr(l.loan_date, 1, 7) = ?', bind: month };
-  if (year) return { type: 'year', value: year, where: 'substr(l.loan_date, 1, 4) = ?', bind: year };
-  return { type: 'all', value: null, where: '1 = 1', bind: null };
+  // where：只查借款時用；spendWhere：查「已還借款＋直接記帳」合併的花費時用
+  if (month) return { type: 'month', value: month, where: 'substr(l.loan_date, 1, 7) = ?', spendWhere: 'substr(s.d, 1, 7) = ?', bind: month };
+  if (year) return { type: 'year', value: year, where: 'substr(l.loan_date, 1, 4) = ?', spendWhere: 'substr(s.d, 1, 4) = ?', bind: year };
+  return { type: 'all', value: null, where: '1 = 1', spendWhere: '1 = 1', bind: null };
 }
 
 /** 成員與已離開成員的暱稱（顯示還款人名字用） */
@@ -44,13 +46,17 @@ async function nameMap(env, ledgerId) {
 export async function historyPeriods(request, env) {
   const user = await requireUser(request, env);
   const ledgerId = await requireMyLedger(env, user.id);
+  // 借款（被否定的不算）與直接記帳都列出月份；總額只算已還借款＋直接記帳
   const { results } = await env.DB.prepare(
-    `SELECT substr(loan_date, 1, 7) AS month,
-            COALESCE(SUM(CASE WHEN status = 'paid' THEN amount END), 0) AS paid_total,
-            COUNT(CASE WHEN status = 'paid' THEN 1 END) AS paid_count
-       FROM loans
-      WHERE ledger_id = ? AND status <> 'rejected'
-      GROUP BY month ORDER BY month DESC`,
+    `SELECT month, SUM(paid_total) AS paid_total, SUM(paid_count) AS paid_count FROM (
+       SELECT substr(loan_date, 1, 7) AS month,
+              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount END), 0) AS paid_total,
+              COUNT(CASE WHEN status = 'paid' THEN 1 END) AS paid_count
+         FROM loans WHERE ledger_id = ?1 AND status <> 'rejected' GROUP BY month
+       UNION ALL
+       SELECT substr(expense_date, 1, 7) AS month, SUM(amount), COUNT(*)
+         FROM expenses WHERE ledger_id = ?1 GROUP BY month
+     ) GROUP BY month ORDER BY month DESC`,
   ).bind(ledgerId).all();
   const months = results.map((r) => ({ month: r.month, paidTotal: r.paid_total, paidCount: r.paid_count }));
   const years = [...new Set(months.map((m) => m.month.slice(0, 4)))];
@@ -63,17 +69,30 @@ export async function historyPeriods(request, env) {
  *        categories: [{ name, amount, count, percent }] }
  */
 export async function computeHistory(env, ledgerId, meId, period) {
+  // 花費來源：已還的借款（算給還款人）＋直接記帳（算給付錢的人），合併成一張表 s
+  const spend = `(
+    SELECT amount, repaid_by AS payer, COALESCE(category, '${OTHER}') AS category, loan_date AS d, 'loan' AS kind
+      FROM loans WHERE ledger_id = ?1 AND status = 'paid'
+    UNION ALL
+    SELECT amount, payer_id AS payer, COALESCE(category, '${OTHER}') AS category, expense_date AS d, 'expense' AS kind
+      FROM expenses WHERE ledger_id = ?1
+  ) s`;
   const binds = period.bind ? [ledgerId, period.bind] : [ledgerId];
-  const base = `FROM loans l WHERE l.ledger_id = ? AND l.status = 'paid' AND ${period.where}`;
+  const where = period.bind ? period.spendWhere.replace('?', '?2') : period.spendWhere;
+  const base = `FROM ${spend} WHERE ${where}`;
 
-  const totals = await env.DB.prepare(`SELECT COALESCE(SUM(l.amount), 0) AS total, COUNT(*) AS count ${base}`).bind(...binds).first();
+  const totals = await env.DB.prepare(
+    `SELECT COALESCE(SUM(s.amount), 0) AS total, COUNT(*) AS count,
+            COUNT(CASE WHEN s.kind = 'loan' THEN 1 END) AS loan_count,
+            COUNT(CASE WHEN s.kind = 'expense' THEN 1 END) AS expense_count ${base}`,
+  ).bind(...binds).first();
 
   const { results: byPayer } = await env.DB.prepare(
-    `SELECT l.repaid_by AS payer, SUM(l.amount) AS amount, COUNT(*) AS count ${base} GROUP BY l.repaid_by`,
+    `SELECT s.payer AS payer, SUM(s.amount) AS amount, COUNT(*) AS count ${base} GROUP BY s.payer`,
   ).bind(...binds).all();
 
   const { results: byCategory } = await env.DB.prepare(
-    `SELECT COALESCE(l.category, '${OTHER}') AS name, SUM(l.amount) AS amount, COUNT(*) AS count ${base} GROUP BY name`,
+    `SELECT s.category AS name, SUM(s.amount) AS amount, COUNT(*) AS count ${base} GROUP BY name`,
   ).bind(...binds).all();
 
   // 每人花費：目前的成員一定列出（沒有花費顯示 0）；已離開的成員有花費才列出
@@ -103,6 +122,8 @@ export async function computeHistory(env, ledgerId, meId, period) {
     period: { type: period.type, value: period.value },
     total,
     count: totals.count,
+    loanCount: totals.loan_count,
+    expenseCount: totals.expense_count,
     people,
     unspecified: { amount: unspec?.amount ?? 0, count: unspec?.count ?? 0 },
     categories,

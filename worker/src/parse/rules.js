@@ -7,7 +7,7 @@ import { findDate } from './dates.js';
 /** 方向：me_lent＝我借出（對方欠我）；partner_lent＝對方借出（我欠對方） */
 export const DIRECTIONS = ['me_lent', 'partner_lent'];
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ── 中文數字 → 阿拉伯數字 ──
 const CN_DIGITS = { 零: 0, 〇: 0, 一: 1, 二: 2, 兩: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -113,7 +113,7 @@ export function findDirection(text, names) {
 // 整理項目時要拿掉的贅字
 const FILLER = /^(?:了|的|錢|钱|塊|元|給|给|去|來|来|在|是|把|用|共|總共|一共|，|,|。|\s)+|(?:了|的|錢|钱|喔|哦|啦|吧|呢|耶|，|,|。|！|!|\s)+$/g;
 
-function cleanItem(rest) {
+export function cleanItem(rest) {
   let item = rest.replace(/[，,。！!？?、~～\s]+/g, ' ').trim();
   let prev;
   do {

@@ -258,6 +258,50 @@ check('錯誤的月份格式 → 拒絕', sumBad.status === 400, sumBad.data);
 const sumC = await call('C', 'GET', '/api/summary');
 check('只有一個人的小窩沒有統整', sumC.status === 409, sumC.data);
 
+// ───── 直接記帳（花費）：不用對方確認，不算進統整，算進歷史紀錄 ─────
+const month = today.slice(0, 7);
+const histBefore = (await call('A', 'GET', `/api/history?month=${month}`)).data;
+const sumBeforeExp = (await call('A', 'GET', '/api/summary')).data;
+const pe = await call('A', 'POST', '/api/parse', { text: '#備用 咩咩寶今天買菜 500', kind: 'expense' });
+check('直接記帳解析：咩咩寶今天買菜 500 → 咩咩寶付的、買菜、今天', pe.status === 200 && pe.data.fields.payer === 'partner'
+  && pe.data.fields.amount === 500 && pe.data.fields.item === '買菜' && pe.data.fields.date === today && pe.data.missing.length === 0, pe.data);
+const ex1 = await call('A', 'POST', '/api/expenses', { ...pe.data.fields, parseSource: 'rules' });
+check('新增花費：付錢的人是咩咩、自動分類', ex1.status === 201 && ex1.data.expense.payer.isMe === false && ex1.data.expense.amount === 500
+  && ex1.data.expense.category, ex1.data);
+const ex2 = await call('B', 'POST', '/api/expenses', { amount: 1200, payer: 'me', item: '電費', date: today });
+check('對方也能記；「我付的」就是記帳的人自己', ex2.status === 201 && ex2.data.expense.payer.isMe === true, ex2.data);
+const exBad = await call('A', 'POST', '/api/expenses', { amount: 100, payer: 'boss', item: '測試', date: today });
+check('沒填誰付的 → 拒絕', exBad.status === 400 && exBad.data.code === 'missing_fields', exBad.data);
+const exFuture = await call('A', 'POST', '/api/expenses', { amount: 100, payer: 'me', item: '測試', date: '2999-01-01' });
+check('未來的日期 → 拒絕', exFuture.status === 400, exFuture.data);
+const exC = await call('C', 'POST', '/api/expenses', { amount: 100, payer: 'me', item: '測試', date: today });
+check('只有一個人的小窩不能記花費', exC.status === 409, exC.data);
+
+const listA = (await call('A', 'GET', '/api/expenses')).data.expenses;
+const listC = (await call('C', 'GET', '/api/expenses')).data.expenses;
+check('兩筆都在清單裡；別的小窩看不到', listA.length === 2 && listC.length === 0, { listA, listC });
+check('花費不會出現在借還款清單', !(await call('A', 'GET', '/api/loans')).data.loans.some((l) => ['買菜', '電費'].includes(l.item)));
+const sumAfterExp = (await call('A', 'GET', '/api/summary')).data;
+check('花費不算進統整', sumAfterExp.me.owes === sumBeforeExp.me.owes && sumAfterExp.partner.owes === sumBeforeExp.partner.owes, sumAfterExp);
+
+const histAfter = (await call('A', 'GET', `/api/history?month=${month}`)).data;
+const personDelta = (who) => histAfter.people.find((p) => p.isMe === who).amount - histBefore.people.find((p) => p.isMe === who).amount;
+check('歷史紀錄：總花費多 1700，兩筆都是咩咩付的（咩咩 +1700、呱呱 +0）', histAfter.total - histBefore.total === 1700
+  && personDelta(false) === 1700 && personDelta(true) === 0 && histAfter.expenseCount === 2, { histBefore, histAfter });
+const periods = (await call('A', 'GET', '/api/history/periods')).data;
+check('歷史期間包含這個月', periods.months.some((m) => m.month === month), periods);
+
+const exEdit = await call('B', 'PUT', `/api/expenses/${ex1.data.expense.id}`, { amount: 450, payer: 'me', item: '買菜', date: today });
+check('修改：咩咩改成自己付的 450', exEdit.status === 200 && exEdit.data.expense.amount === 450 && exEdit.data.expense.payer.isMe === true, exEdit.data);
+const exEditC = await call('C', 'PUT', `/api/expenses/${ex1.data.expense.id}`, { amount: 1, payer: 'me', item: 'x', date: today });
+check('別的小窩不能修改', exEditC.status !== 200, exEditC.status);
+const exDelC = await call('C', 'DELETE', `/api/expenses/${ex2.data.expense.id}`);
+check('別的小窩不能刪除', exDelC.status !== 200, exDelC.status);
+const exDel = await call('A', 'DELETE', `/api/expenses/${ex2.data.expense.id}`);
+const exDelAgain = await call('A', 'DELETE', `/api/expenses/${ex2.data.expense.id}`);
+check('刪除：任一方都能刪（A 刪 B 記的），刪過再刪 → 找不到', exDel.status === 200 && exDelAgain.status === 404, exDel.data);
+await call('A', 'DELETE', `/api/expenses/${ex1.data.expense.id}`);
+
 // ───── 第 10 階段：語音 ─────
 const v1 = await call('A', 'POST', '/api/parse-voice', { audio: { mimeType: 'audio/webm', base64: 'AAAA' } });
 check('語音：不接受 WAV 以外的格式', v1.status === 400, v1.data);

@@ -1,5 +1,8 @@
 // 對話式記帳：打字或說話 → 解析 → 顯示可修改的卡片 → 缺漏追問 → 確認送出
 // 第 10 階段：🎤 語音（錄音交給 Gemini 理解）；不能錄音時提示改用鍵盤麥克風
+// 上方兩個分頁：
+//   🤝 借還款：記「誰欠誰」，要等對方同意
+//   🧾 直接記帳：記「誰付了多少錢買什麼」，不用對方同意，直接算進歷史紀錄的花費
 
 import { api } from './api.js';
 import { esc, toast, withBusy, money, todayTaipei, openModal } from './ui.js';
@@ -8,18 +11,31 @@ import { playSound, setRecording } from './sound.js';
 
 /**
  * 在 container 裡放入記帳區。
- * ctx = { me: {nickname}, partner: {nickname}, onSaved: () => void }
+ * ctx = { me: {nickname}, partner: {nickname}, onSaved: () => void, onExpenseSaved: () => void }
  */
 export function mountRecorder(container, ctx) {
   const partner = ctx.partner.nickname;
-  let draft = null;        // 目前的草稿 { amount, direction, item, date }
+  let mode = 'loan';       // 'loan' 借還款｜'expense' 直接記帳
+  let draft = null;        // 目前的草稿：借還款 { amount, direction, item, date }；直接記帳 { amount, payer, item, date }
   let source = 'rules';    // 解析來源
   let channel = 'web';     // 這筆是用打字（web）還是語音（voice）
   let recording = null;    // 錄音中的控制器
+  // 切換分頁時，各自的草稿先收起來，切回來還在
+  const stash = { loan: null, expense: null };
+  let expenseGreeted = false;
+
+  const PLACEHOLDER = {
+    loan: `例如：昨天幫${partner}付晚餐 350`,
+    expense: `例如：${partner}今天買菜 500`,
+  };
 
   container.innerHTML = `
     <section class="card chat">
       <h2>📒 記一筆</h2>
+      <div class="seg record-mode" role="tablist">
+        <button type="button" role="tab" data-mode="loan" class="on">🤝 借還款<small>誰欠誰，等對方同意</small></button>
+        <button type="button" role="tab" data-mode="expense">🧾 直接記帳<small>誰付的，直接記入</small></button>
+      </div>
       <div class="chat-log" id="chat-log" aria-live="polite"></div>
       <div id="draft-card"></div>
       <form class="chat-input" id="chat-form" autocomplete="off">
@@ -50,17 +66,127 @@ export function mountRecorder(container, ctx) {
   const missingOf = (d) => {
     const m = [];
     if (!(Number.isInteger(d.amount) && d.amount > 0)) m.push('amount');
-    if (!['me_lent', 'partner_lent'].includes(d.direction)) m.push('direction');
+    if (mode === 'expense') {
+      if (!['me', 'partner'].includes(d.payer)) m.push('payer');
+    } else if (!['me_lent', 'partner_lent'].includes(d.direction)) m.push('direction');
     if (!(d.item && d.item.trim())) m.push('item');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date || '')) m.push('date');
     return m;
   };
+
+  // ───── 分頁切換 ─────
+  container.querySelectorAll('[data-mode]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.mode === mode || recording) return;
+      stash[mode] = draft ? { draft, source, channel } : null;
+      mode = b.dataset.mode;
+      ({ draft = null, source = 'rules', channel = 'web' } = stash[mode] || {});
+      container.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x.dataset.mode === mode));
+      input.placeholder = PLACEHOLDER[mode];
+      if (mode === 'expense' && !expenseGreeted) {
+        expenseGreeted = true;
+        say('bot', `這裡記「已經付掉的花費」，不用${partner}同意，會直接算進歷史紀錄。例如「${partner}今天買菜 500」或「我付電費 1200」。`);
+      }
+      renderCard();
+    };
+  });
+
+  /** 直接記帳的卡片：金額、誰付的、項目、日期 */
+  function renderExpenseCard() {
+    const missing = missingOf(draft);
+    const miss = (k) => (missing.includes(k) ? ' missing' : '');
+    const today = todayTaipei();
+    cardBox.innerHTML = `
+      <div class="draft">
+        <div class="draft-title">請檢查一下 ✏️ <small>可以直接修改</small></div>
+        <label class="field${miss('amount')}">金額
+          <input type="number" inputmode="numeric" min="1" step="1" id="f-amount" value="${draft.amount ?? ''}" placeholder="例如 500" />
+        </label>
+        <div class="field${miss('payer')}">誰付的
+          <div class="seg">
+            <button type="button" data-payer="me" class="${draft.payer === 'me' ? 'on' : ''}">我付的</button>
+            <button type="button" data-payer="partner" class="${draft.payer === 'partner' ? 'on' : ''}">${esc(partner)}付的</button>
+          </div>
+        </div>
+        <label class="field${miss('item')}">項目
+          <input id="f-item" maxlength="30" value="${esc(draft.item ?? '')}" placeholder="例如 買菜" />
+        </label>
+        <div class="field${miss('date')}">日期
+          <input type="date" id="f-date" max="${today}" value="${draft.date ?? ''}" />
+          <div class="quick">
+            <button type="button" data-date="${today}">今天</button>
+            <button type="button" data-date="${todayTaipei(-1)}">昨天</button>
+            <button type="button" data-date="${todayTaipei(-2)}">前天</button>
+          </div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn ghost" id="d-cancel">不記了</button>
+          <button type="button" class="btn" id="d-submit" ${missing.length ? 'disabled' : ''}>確認記帳</button>
+        </div>
+        ${missing.length ? '<p class="hint center-text">紅色的欄位還沒填好喔</p>' : `<p class="hint center-text">送出後直接記入，不用等${esc(partner)}同意（會通知${esc(partner)}）</p>`}
+      </div>`;
+
+    const refreshState = () => {
+      const m = missingOf(draft);
+      cardBox.querySelector('#d-submit').disabled = m.length > 0;
+      for (const [key, sel] of [['amount', '#f-amount'], ['item', '#f-item'], ['date', '#f-date']]) {
+        cardBox.querySelector(sel).closest('.field').classList.toggle('missing', m.includes(key));
+      }
+    };
+    cardBox.querySelector('#f-amount').oninput = (e) => {
+      const n = Number(e.target.value);
+      draft.amount = Number.isInteger(n) && n > 0 ? n : null;
+      refreshState();
+    };
+    cardBox.querySelector('#f-item').oninput = (e) => {
+      draft.item = e.target.value.trim() || null;
+      refreshState();
+    };
+    cardBox.querySelector('#f-date').onchange = (e) => {
+      draft.date = e.target.value || null;
+      refreshState();
+    };
+    cardBox.querySelectorAll('[data-payer]').forEach((b) => {
+      b.onclick = () => {
+        draft.payer = b.dataset.payer;
+        renderCard();
+      };
+    });
+    cardBox.querySelectorAll('[data-date]').forEach((b) => {
+      b.onclick = () => {
+        draft.date = b.dataset.date;
+        renderCard();
+      };
+    });
+    cardBox.querySelector('#d-cancel').onclick = () => {
+      draft = null;
+      channel = 'web';
+      renderCard();
+      say('bot', '好的，這筆先不記 🐸');
+    };
+    cardBox.querySelector('#d-submit').onclick = (e) =>
+      withBusy(e.currentTarget, async () => {
+        if (draft.date > today) throw new Error('日期不能是未來的日子喔');
+        const { expense } = await api('/api/expenses', {
+          method: 'POST',
+          body: { ...draft, parseSource: source, inputChannel: channel },
+        });
+        say('bot', `記好了！${expense.item} ${money(expense.amount)}（${expense.payer.isMe ? '我' : partner}付的）🧾`);
+        toast('已記帳', 'ok');
+        playSound('coin');
+        draft = null;
+        channel = 'web';
+        renderCard();
+        ctx.onExpenseSaved?.();
+      });
+  }
 
   function renderCard() {
     if (!draft) {
       cardBox.innerHTML = '';
       return;
     }
+    if (mode === 'expense') return renderExpenseCard();
     const missing = missingOf(draft);
     const miss = (k) => (missing.includes(k) ? ' missing' : '');
     const today = todayTaipei();
@@ -159,7 +285,7 @@ export function mountRecorder(container, ctx) {
     say('me', text);
     const button = form.querySelector('button');
     await withBusy(button, async () => {
-      const result = await api('/api/parse', { method: 'POST', body: { text, draft } });
+      const result = await api('/api/parse', { method: 'POST', body: { text, draft, kind: mode } });
       handleResult(result);
     });
     input.focus();
@@ -169,7 +295,7 @@ export function mountRecorder(container, ctx) {
   function handleResult(result) {
     draft = result.fields;
     source = result.source;
-    say('bot', result.question || '幫你整理好了，確認沒問題就按「確認送出」！');
+    say('bot', result.question || `幫你整理好了，確認沒問題就按「${mode === 'expense' ? '確認記帳' : '確認送出'}」！`);
     // Gemini 無法使用時的小提示（記帳流程照常）
     if (result.notice) {
       const chip = document.createElement('div');
@@ -220,7 +346,7 @@ export function mountRecorder(container, ctx) {
       const bubble = say('me', `🎤 語音（${audio.seconds} 秒）`);
       const result = await api('/api/parse-voice', {
         method: 'POST',
-        body: { audio: { mimeType: 'audio/wav', base64: audio.base64 }, draft },
+        body: { audio: { mimeType: 'audio/wav', base64: audio.base64 }, draft, kind: mode },
       });
       if (result.transcript) bubble.querySelector('p').textContent = `🎤 「${result.transcript}」`;
       channel = 'voice';
@@ -265,11 +391,11 @@ export function mountRecorder(container, ctx) {
     if (draft) {
       draft.amount = amount;
     } else {
-      draft = { amount, direction: null, item: null, date: null };
+      draft = mode === 'expense' ? { amount, payer: null, item: null, date: null } : { amount, direction: null, item: null, date: null };
       source = 'manual';
       channel = 'web';
     }
-    say('bot', `金額 ${money(amount)} 幫你填好了！其他欄位可以直接點選，或打字告訴我（例如「昨天幫${partner}付晚餐」）🐸`);
+    say('bot', `金額 ${money(amount)} 幫你填好了！其他欄位可以直接點選，或打字告訴我（例如「${mode === 'expense' ? '我付的，買菜' : `昨天幫${partner}付晚餐`}」）🐸`);
     renderCard();
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }

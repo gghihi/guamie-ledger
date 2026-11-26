@@ -8,6 +8,7 @@ import { todayIn } from './parse/dates.js';
 import { HttpError, json, readJson, newId, cleanText } from './util.js';
 import { notify } from './notify.js';
 import { classifyForLedger } from './categories.js';
+import { analyzeExpense } from './parse/expense.js';
 
 /**
  * 取得「我、對方、帳本」的資料。記帳一定要兩個人都在小窩裡。
@@ -29,7 +30,7 @@ export async function loadLedgerContext(env, user) {
 
 const parseCtx = (env, lc) => ({ timeZone: env.APP_TIMEZONE || 'Asia/Taipei', me: lc.me, partner: lc.partner });
 
-/** POST /api/parse：把一句話解析成欄位，並告訴前端還缺什麼 */
+/** POST /api/parse：把一句話解析成欄位，並告訴前端還缺什麼（body.kind = 'expense' 時是直接記帳） */
 export { parseCtx };
 
 export async function parseText(request, env) {
@@ -38,7 +39,8 @@ export async function parseText(request, env) {
   const body = await readJson(request);
   const text = cleanText(body.text, 300);
   if (!text) throw new HttpError(400, '請先輸入一句話', 'empty_text');
-  const result = await analyze(text, body.draft, parseCtx(env, lc), env);
+  const parse = body.kind === 'expense' ? analyzeExpense : analyze;
+  const result = await parse(text, body.draft, parseCtx(env, lc), env);
   return json(request, env, { ok: true, ...result });
 }
 
@@ -58,7 +60,8 @@ export async function parseVoice(request, env) {
   if (audio.base64.length > MAX_AUDIO_BASE64) throw new HttpError(413, '錄音太長了，請在 30 秒內說完', 'audio_too_long');
   if (!/^[A-Za-z0-9+/]+=*$/.test(audio.base64.slice(-100))) throw new HttpError(400, '錄音內容不正確', 'bad_audio');
 
-  const result = await analyze({ audio: { mimeType: audio.mimeType, base64: audio.base64 } }, body.draft, parseCtx(env, lc), env);
+  const parse = body.kind === 'expense' ? analyzeExpense : analyze;
+  const result = await parse({ audio: { mimeType: audio.mimeType, base64: audio.base64 } }, body.draft, parseCtx(env, lc), env);
   return json(request, env, { ok: true, ...result });
 }
 

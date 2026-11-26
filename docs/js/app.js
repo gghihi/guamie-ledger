@@ -6,6 +6,7 @@ import { api, getToken, startGoogleLogin, finishGoogleLogin, logout } from './ap
 import { esc, toast, confirmDialog, withBusy, openModal } from './ui.js';
 import { mountRecorder } from './record.js';
 import { mountLoanList } from './loanlist.js';
+import { mountExpenseList } from './expenselist.js';
 import { mountSummary } from './summary.js';
 import { mountCalculator } from './calculator.js';
 import { mountSoundSettings, playSound } from './sound.js';
@@ -150,6 +151,7 @@ function renderHome() {
       <div id="calculator"></div>
       <div id="recorder"></div>
       <div id="loan-list"></div>
+      <div id="expense-list"></div>
     </div>
     <div id="history-view" ${state.view === 'history' ? '' : 'hidden'}></div>
 `;
@@ -176,10 +178,15 @@ function renderHome() {
     const summary = mountSummary(document.getElementById('summary'));
     const list = mountLoanList(document.getElementById('loan-list'), { partner, onChange: () => summary.refresh() });
     state.list = list;
-    const recorder = mountRecorder(document.getElementById('recorder'), { me, partner, onSaved: () => list.refresh() });
+    const expenses = mountExpenseList(document.getElementById('expense-list'), { partner });
+    state.expenses = expenses;
+    const recorder = mountRecorder(document.getElementById('recorder'), {
+      me, partner, onSaved: () => list.refresh(), onExpenseSaved: () => expenses.refresh(),
+    });
     mountCalculator(document.getElementById('calculator'), { onUse: (amount) => recorder.setAmount(amount) });
   } else {
     state.list = mountLoanList(document.getElementById('loan-list'), { partner: { nickname: '對方' } });
+    state.expenses = mountExpenseList(document.getElementById('expense-list'), { partner: { nickname: '對方' } });
   }
 
   document.getElementById('leave-nest').addEventListener('click', (e) => leaveNest(e.currentTarget, together));
@@ -374,7 +381,11 @@ async function syncNow() {
       await refresh();
     } else {
       // 對方有新動作（清單變了）就「啵」一聲
-      if (await state.list?.refresh({ quiet: true })) playSound('pop');
+      const [loansChanged, expensesChanged] = await Promise.all([
+        state.list?.refresh({ quiet: true }),
+        state.expenses?.refresh({ quiet: true }),
+      ]);
+      if (loansChanged || expensesChanged) playSound('pop');
     }
   } catch {
     /* 背景同步失敗就等下一次 */

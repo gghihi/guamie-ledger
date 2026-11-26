@@ -88,17 +88,21 @@ export async function recalculateCategories(request, env) {
   const user = await requireUser(request, env);
   const ledgerId = await requireMyLedger(env, user.id);
   const rules = await loadCategories(env, ledgerId);
-  const { results } = await env.DB.prepare('SELECT id, item, category FROM loans WHERE ledger_id = ?').bind(ledgerId).all();
+  // 借款和直接記帳都要重新分類
+  const { results: loans } = await env.DB.prepare('SELECT id, item, category FROM loans WHERE ledger_id = ?').bind(ledgerId).all();
+  const { results: expenses } = await env.DB.prepare('SELECT id, item, category FROM expenses WHERE ledger_id = ?').bind(ledgerId).all();
 
   const changes = [];
-  for (const r of results) {
-    const next = classify(r.item, rules);
-    if (next !== r.category) changes.push({ id: r.id, from: r.category, to: next });
+  for (const [table, rows] of [['loans', loans], ['expenses', expenses]]) {
+    for (const r of rows) {
+      const next = classify(r.item, rules);
+      if (next !== r.category) changes.push({ table, id: r.id, to: next });
+    }
   }
   // 分批寫入（每批 50 筆），每批一起成功或一起失敗
   for (let i = 0; i < changes.length; i += 50) {
     await env.DB.batch(changes.slice(i, i + 50).map((c) =>
-      env.DB.prepare('UPDATE loans SET category = ? WHERE id = ? AND ledger_id = ?').bind(c.to, c.id, ledgerId)));
+      env.DB.prepare(`UPDATE ${c.table} SET category = ? WHERE id = ? AND ledger_id = ?`).bind(c.to, c.id, ledgerId)));
   }
-  return json(request, env, { ok: true, total: results.length, updated: changes.length });
+  return json(request, env, { ok: true, total: loans.length + expenses.length, updated: changes.length });
 }

@@ -500,3 +500,13 @@ input:focus { border-color: var(--frog); }
 .switch-row input[type="checkbox"]:checked { background: var(--frog); border-color: var(--frog-dark); }
 .switch-row input[type="checkbox"]:checked::after { transform: translateX(22px); }
 .volume-row input[type="range"] { padding: 0; border: none; background: none; accent-color: var(--frog); height: 32px; }
+
+/* ───── 記一筆：借還款／直接記帳 分頁 ───── */
+.record-mode { margin: 4px 0 10px; }
+.record-mode button { padding: 8px 6px; }
+
+/* ───── 🧾 記帳紀錄 ───── */
+.expenses .loan-body { cursor: default; }
+.exp-total { margin: 10px 0 4px; text-align: center; color: var(--wood-dark); }
+.exp-total strong { font-size: 1.3rem; margin: 0 4px; }
+.exp-total small { color: var(--muted); }

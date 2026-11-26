@@ -34,12 +34,16 @@ const RESPONSE_SCHEMA = {
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
+/** 「今天是 2026-11-26（星期四）」（借款與直接記帳共用） */
+export function todayLine(today) {
+  const [y, m, d] = today.split('-').map(Number);
+  return `今天是 ${today}（星期${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}），時區為台灣。`;
+}
+
 function systemPrompt(ctx) {
-  const [y, m, d] = ctx.today.split('-').map(Number);
-  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   return [
     '你是兩人記帳 APP「呱咩小窩帳」的記帳小幫手，負責從使用者的一句話中擷取借款資料。',
-    `今天是 ${ctx.today}（星期${weekday}），時區為台灣。`,
+    todayLine(ctx.today),
     `使用者本人的稱呼：${ctx.names.me.join('、')}。對方（另一半）的稱呼：${ctx.names.partner.join('、')}。`,
     '規則：',
     '1. 只擷取句子裡明確提到的資訊。不確定的欄位一律填 null 或 unknown，絕對不要猜金額或誰欠誰。',
@@ -72,7 +76,11 @@ export function geminiTransport(env, fetchImpl = fetch) {
   return { fetch: fetchImpl, key: cleanApiKey(env.GEMINI_API_KEY) || null };
 }
 
-export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch) {
+/**
+ * spec：要 Gemini 回答哪一種格式（預設是借款；直接記帳用 parse/expense.js 的 EXPENSE_SPEC）
+ *   { schema, prompt(ctx), sanitize(out, today), audioHint }
+ */
+export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch, spec = LOAN_SPEC) {
   const transport = geminiTransport(rawEnv, fetchImpl);
   if (!rawEnv.GEMINI_PROXY && !transport.key) throw new GeminiError('no_key');
   const env = { ...rawEnv, transport };
@@ -86,7 +94,7 @@ export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch) {
   let lastError;
   for (const attempt of attempts) {
     try {
-      const result = await callModel(input, ctx, env, fetchImpl, attempt);
+      const result = await callModel(input, ctx, env, fetchImpl, attempt, spec);
       return { ...result, model: attempt.model };
     } catch (err) {
       if (!(err instanceof GeminiError)) throw err;
@@ -100,9 +108,9 @@ export async function parseWithGemini(input, ctx, rawEnv, fetchImpl = fetch) {
 const PRIMARY_TIMEOUT_MS = 7000;
 const FALLBACK_TIMEOUT_MS = 10000;
 
-async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking }) {
+async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking }, spec) {
   const parts = input.audio
-    ? [{ text: '請聽這段錄音並擷取借款資料。' }, { inlineData: { mimeType: input.audio.mimeType, data: input.audio.base64 } }]
+    ? [{ text: spec.audioHint }, { inlineData: { mimeType: input.audio.mimeType, data: input.audio.base64 } }]
     : [{ text: input.text }];
 
   const controller = new AbortController();
@@ -115,12 +123,12 @@ async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking 
       // 經過轉送站時不帶金鑰（轉送站自己加）；本機直連時才帶
       headers: { 'Content-Type': 'application/json', ...(transport.key ? { 'x-goog-api-key': transport.key } : {}) },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt(ctx) }] },
+        systemInstruction: { parts: [{ text: spec.prompt(ctx) }] },
         contents: [{ role: 'user', parts }],
         generationConfig: {
           temperature: 0,
           responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
+          responseSchema: spec.schema,
           // 只有主要模型（Gemini 3.8）使用「低度思考」以加快速度；備用模型用預設值
           ...(thinking ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
         },
@@ -148,7 +156,7 @@ async function callModel(input, ctx, env, fetchImpl, { model, timeout, thinking 
   } catch {
     throw new GeminiError('bad_output');
   }
-  return sanitizeGeminiOutput(out, ctx.today);
+  return spec.sanitize(out, ctx.today);
 }
 
 /** 檢查 Gemini 的回答，不合格的欄位一律改成 null（寧可追問，也不要存錯） */
@@ -161,3 +169,5 @@ export function sanitizeGeminiOutput(out, today) {
   const transcript = typeof out.transcript === 'string' ? out.transcript.trim().slice(0, 200) : null;
   return { isLoan: out.isLoan !== false, amount, direction, item, date, transcript };
 }
+
+const LOAN_SPEC = { schema: RESPONSE_SCHEMA, prompt: systemPrompt, sanitize: sanitizeGeminiOutput, audioHint: '請聽這段錄音並擷取借款資料。' };

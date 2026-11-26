@@ -45,6 +45,7 @@ docs/（GitHub Pages）──Bearer token──► worker/（Cloudflare Worker�
 - **借款狀態**：`pending → unpaid → repay_pending → paid`，另有 `rejected`。`repay_pending` 可以 `cancel-repay`（標記的人）或 `decline-repay`（對方）退回 `unpaid`。統整只算 `unpaid` 和 `repay_pending`。撤回或刪除會真的刪掉那筆，歷史留在 `loan_events`。
 - **同步更新**：`app.js` 的 `syncNow()` 只呼叫 `state.list.refresh({ quiet: true })`（資料沒變不重畫、不清掉記帳草稿），成員有變動才整頁重畫；觸發來源是 SW 收到推播時的 `postMessage({type:'refresh'})`、切回 APP、以及畫面可見時每 20 秒。
 - **歷史紀錄**（`history.js`、`categoryApi.js`、`categories.js`；前端 `docs/js/history.js`）：只算 `paid`；花費算給 `loans.repaid_by`（NULL＝未指定，計入總額並單獨列出）；月份依 `loan_date`。分類在記帳／修改重送當下依 `ledger_categories`（每本帳一份、`sort_order` 小的優先、「其他」固定最後）存進 `loans.category`，改規則不會動舊資料，只有 `POST /api/categories/recalculate` 才重算。已還款時 `repaidBy` 預設欠款人，退回時清空。
+- **直接記帳**（`expenses.js`、`parse/expense.js`、表格 `expenses`；前端 `record.js` 的「🧾 直接記帳」分頁與 `expenselist.js`）：記花費（金額、`payer_id`、項目、`expense_date`），不用對方確認、只通知對方，不進統整；歷史紀錄把它和 `paid` 借款合併計算（算給 `payer_id`）。解析走 `/api/parse`、`/api/parse-voice` 加 `kind: 'expense'`，Gemini 用 `EXPENSE_SPEC` 格式。重新分類也會更新 `expenses.category`。LINE 不支援。
 - **預覽版流程**：使用者要求「先做預覽版」時，把 `docs/` 複製到 `docs/preview/`（同網域，登入與 CORS 照常），只改預覽版並加「預覽版」標籤；後端只做「新增」並直接部署正式後端。驗收後把變更搬回 `docs/`、移除 `docs/preview/`。
 - **通知**：`notify.js` 透過 `env.waitUntil` 在背景同時送 Web Push 和 LINE。LINE 主動通知有每月上限（`line_push_usage`、`LINE_MONTHLY_PUSH_LIMIT`），回覆訊息不受限。
 - **Google 登入**：Worker 端用 authorization code 流程，前端產生 nonce 防止別人塞登入；callback 發一次性 `login_codes`，前端再換成 session token 存 localStorage。全程不用 Cookie。
@@ -104,6 +105,7 @@ docs/（GitHub Pages）──Bearer token──► worker/（Cloudflare Worker�
 - **借款狀態**：`pending → unpaid → repay_pending → paid`，另有 `rejected`。`repay_pending` 可以 `cancel-repay`（標記的人）或 `decline-repay`（對方）退回 `unpaid`。統整只算 `unpaid` 和 `repay_pending`。撤回或刪除會真的刪掉那筆，歷史留在 `loan_events`。
 - **同步更新**：`app.js` 的 `syncNow()` 只呼叫 `state.list.refresh({ quiet: true })`（資料沒變不重畫、不清掉記帳草稿），成員有變動才整頁重畫；觸發來源是 SW 收到推播時的 `postMessage({type:'refresh'})`、切回 APP、以及畫面可見時每 20 秒。
 - **歷史紀錄**（`history.js`、`categoryApi.js`、`categories.js`；前端 `docs/js/history.js`）：只算 `paid`；花費算給 `loans.repaid_by`（NULL＝未指定，計入總額並單獨列出）；月份依 `loan_date`。分類在記帳／修改重送當下依 `ledger_categories`（每本帳一份、`sort_order` 小的優先、「其他」固定最後）存進 `loans.category`，改規則不會動舊資料，只有 `POST /api/categories/recalculate` 才重算。已還款時 `repaidBy` 預設欠款人，退回時清空。
+- **直接記帳**（`expenses.js`、`parse/expense.js`、表格 `expenses`；前端 `record.js` 的「🧾 直接記帳」分頁與 `expenselist.js`）：記花費（金額、`payer_id`、項目、`expense_date`），不用對方確認、只通知對方，不進統整；歷史紀錄把它和 `paid` 借款合併計算（算給 `payer_id`）。解析走 `/api/parse`、`/api/parse-voice` 加 `kind: 'expense'`，Gemini 用 `EXPENSE_SPEC` 格式。重新分類也會更新 `expenses.category`。LINE 不支援。
 - **預覽版流程**：使用者要求「先做預覽版」時，把 `docs/` 複製到 `docs/preview/`（同網域，登入與 CORS 照常），只改預覽版並加「預覽版」標籤；後端只做「新增」並直接部署正式後端。驗收後把變更搬回 `docs/`、移除 `docs/preview/`。
 - **通知**：`notify.js` 透過 `env.waitUntil` 在背景同時送 Web Push 和 LINE。LINE 主動通知有每月上限（`line_push_usage`、`LINE_MONTHLY_PUSH_LIMIT`），回覆訊息不受限。
 - **Google 登入**：Worker 端用 authorization code 流程，前端產生 nonce 防止別人塞登入；callback 發一次性 `login_codes`，前端再換成 session token 存 localStorage。全程不用 Cookie。

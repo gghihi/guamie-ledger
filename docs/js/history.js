@@ -1,7 +1,8 @@
 // 📊 歷史紀錄頁
 // H5：期間選擇、花費總覽、分類列表
 // H6：項目圓餅圖（點選區塊看金額與筆數）、未指定還款人補填（二次確認）、分類規則管理
-// 規則：只算「已還」紀錄；花費算給實際還款人；月份依借款日期；「未指定」計入總花費並單獨顯示。
+// 規則：算「已還」的借款＋「直接記帳」的花費；借款算給實際還款人、直接記帳算給付錢的人；
+//       月份依借款／記帳日期；「未指定」計入總花費並單獨顯示。
 
 import { api } from './api.js';
 import { esc, money, toast, confirmDialog, openModal, withBusy, prettyDate } from './ui.js';
@@ -72,9 +73,9 @@ export function mountHistory(container) {
     return `
       <section class="card">
         <h2>💸 ${periodLabel()}的花費</h2>
-        <div class="net even hist-total">${money(data.total)}<small>共 ${data.count} 筆已還</small></div>
+        <div class="net even hist-total">${money(data.total)}<small>共 ${data.count} 筆${data.expenseCount ? `（已還 ${data.loanCount}・直接記帳 ${data.expenseCount}）` : '已還'}</small></div>
         <div class="sum-grid">${people}${unspec}</div>
-        <p class="hint center-text">只計算「已還」的紀錄，花費算給實際還款的人</p>
+        <p class="hint center-text">計算「已還」的借款和「直接記帳」，花費算給實際付錢的人</p>
       </section>`;
   }
 
@@ -86,7 +87,7 @@ export function mountHistory(container) {
 
   function categoriesHtml() {
     if (data.empty) {
-      return `<section class="card center"><h2>🥧 項目花費</h2><p class="empty-hist">尚無花費資料 🐸🐑</p><p class="hint">這段期間還沒有「已還」的紀錄</p></section>`;
+      return `<section class="card center"><h2>🥧 項目花費</h2><p class="empty-hist">尚無花費資料 🐸🐑</p><p class="hint">這段期間還沒有「已還」或「直接記帳」的紀錄</p></section>`;
     }
     const rows = data.categories
       .map((c, i) => `
